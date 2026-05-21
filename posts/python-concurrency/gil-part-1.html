@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The GIL is Not Your Enemy — Part 1 of Python Concurrency</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'Crimson Pro', Georgia, serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  }
+
+  html[data-theme="light"] {
+    --bg: #faf6f0;
+    --bg-tint: #f4ece0;
+    --surface: #ffffff;
+    --surface-elevated: #fffdf9;
+    --surface-recessed: #f1e9db;
+    --border: rgba(60, 40, 20, 0.10);
+    --border-bright: rgba(60, 40, 20, 0.20);
+    --text: #2a2018;
+    --text-bright: #1a130c;
+    --text-dim: #6b5840;
+    --text-muted: #8a7660;
+
+    --accent: #b8472a;
+    --accent-dim: rgba(184, 71, 42, 0.10);
+    --accent-bright: #d4583a;
+    --teal: #1e5f5c;
+    --teal-dim: rgba(30, 95, 92, 0.10);
+    --teal-bright: #2a807c;
+    --gold: #b8860b;
+    --gold-dim: rgba(184, 134, 11, 0.10);
+    --rust: #8b3a1f;
+    --sage: #6a7d3c;
+    --sage-dim: rgba(106, 125, 60, 0.10);
+
+    --thread-a: #b8472a;
+    --thread-b: #1e5f5c;
+  }
+
+  html[data-theme="dark"] {
+    --bg: #18120c;
+    --bg-tint: #221a12;
+    --surface: #221a12;
+    --surface-elevated: #2a2018;
+    --surface-recessed: #14100a;
+    --border: rgba(240, 220, 190, 0.10);
+    --border-bright: rgba(240, 220, 190, 0.22);
+    --text: #efe4d2;
+    --text-bright: #fff8e8;
+    --text-dim: #b8a888;
+    --text-muted: #948060;
+
+    --accent: #e87a5b;
+    --accent-dim: rgba(232, 122, 91, 0.14);
+    --accent-bright: #f29478;
+    --teal: #4dbab5;
+    --teal-dim: rgba(77, 186, 181, 0.14);
+    --teal-bright: #6dd0cb;
+    --gold: #e0b048;
+    --gold-dim: rgba(224, 176, 72, 0.14);
+    --rust: #c66f4a;
+    --sage: #a8b85e;
+    --sage-dim: rgba(168, 184, 94, 0.14);
+
+    --thread-a: #e87a5b;
+    --thread-b: #4dbab5;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse at 15% 0%, var(--accent-dim) 0%, transparent 45%),
+      radial-gradient(ellipse at 85% 15%, var(--teal-dim) 0%, transparent 50%);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 19px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    overflow-wrap: break-word;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  body * { min-width: 0; }
+
+  /* ============ READING PROGRESS ============ */
+  .progress {
+    position: fixed;
+    top: 0; left: 0;
+    width: 0%;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--teal));
+    z-index: 100;
+    transition: width 0.08s linear;
+  }
+
+  /* ============ HEADER STRIP ============ */
+  .site-header {
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  .site-header__title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .theme-toggle {
+    background: none;
+    border: 1px solid var(--border-bright);
+    color: var(--text-dim);
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+  }
+
+  .theme-toggle:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .page {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 60px 32px 120px;
+  }
+
+  /* ============ HERO ============ */
+  .hero {
+    margin-bottom: 40px;
+    padding-bottom: 36px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .hero__series {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 20px;
+  }
+
+  .hero__series::before {
+    content: '';
+    display: inline-block;
+    width: 24px;
+    height: 1px;
+    background: var(--accent);
+    vertical-align: middle;
+    margin-right: 12px;
+    transform: translateY(-2px);
+  }
+
+  .hero__title {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: clamp(36px, 5.5vw, 54px);
+    line-height: 1.05;
+    letter-spacing: -1.2px;
+    color: var(--text-bright);
+    margin-bottom: 18px;
+    text-wrap: balance;
+  }
+
+  .hero__subtitle {
+    font-family: var(--font-body);
+    font-style: italic;
+    font-size: 22px;
+    line-height: 1.4;
+    color: var(--text-dim);
+    max-width: 600px;
+    margin-bottom: 28px;
+  }
+
+  .hero__meta {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-muted);
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+
+  .hero__meta span { display: inline-flex; align-items: center; gap: 6px; }
+  .hero__meta span::before { content: ''; width: 4px; height: 4px; background: var(--text-muted); border-radius: 50%; }
+  .hero__meta span:first-child::before { display: none; }
+
+  /* ============ TOC ============ */
+  .toc {
+    background: var(--surface-recessed);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 22px 28px;
+    margin-bottom: 56px;
+  }
+
+  .toc__label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 14px;
+  }
+
+  .toc ol {
+    list-style: none;
+    counter-reset: toc;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 28px;
+  }
+
+  @media (max-width: 560px) {
+    .toc ol { grid-template-columns: 1fr; }
+  }
+
+  .toc li {
+    counter-increment: toc;
+    line-height: 1.4;
+  }
+
+  .toc a {
+    color: var(--text-dim);
+    text-decoration: none;
+    font-size: 15px;
+    display: flex;
+    gap: 12px;
+    align-items: baseline;
+    padding: 4px 0;
+    transition: color 0.15s;
+  }
+
+  .toc a:hover { color: var(--accent); }
+
+  .toc a::before {
+    content: counter(toc, decimal-leading-zero);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent);
+    font-weight: 500;
+    min-width: 24px;
+  }
+
+  /* ============ PROSE ============ */
+  .prose p { margin-bottom: 1.3em; text-wrap: pretty; }
+  .prose strong { color: var(--text-bright); font-weight: 600; }
+  .prose em { font-style: italic; color: var(--text-bright); }
+
+  .prose a {
+    color: var(--accent);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+  }
+
+  .prose code {
+    font-family: var(--font-mono);
+    font-size: 0.82em;
+    background: var(--accent-dim);
+    color: var(--accent);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 500;
+  }
+
+  .lead {
+    font-size: 22px;
+    line-height: 1.55;
+    color: var(--text-bright);
+    margin-bottom: 36px;
+  }
+
+  /* ============ HEADINGS ============ */
+  h2 {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 32px;
+    line-height: 1.15;
+    letter-spacing: -0.6px;
+    color: var(--text-bright);
+    margin-top: 64px;
+    margin-bottom: 8px;
+    text-wrap: balance;
+    scroll-margin-top: 24px;
+  }
+
+  h2 .num {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent);
+    letter-spacing: 1px;
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  h3 {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 22px;
+    line-height: 1.3;
+    color: var(--text-bright);
+    margin-top: 36px;
+    margin-bottom: 12px;
+  }
+
+  /* ============ CODE BLOCKS ============ */
+  .code-block {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.65;
+    background: var(--surface-recessed);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin: 24px 0;
+    overflow-x: auto;
+    white-space: pre;
+    box-shadow: inset 0 1px 3px rgba(60, 40, 20, 0.04);
+  }
+
+  .code-block .kw   { color: var(--accent); font-weight: 500; }
+  .code-block .com  { color: var(--text-muted); font-style: italic; }
+  .code-block .str  { color: var(--sage); }
+  .code-block .num  { color: var(--gold); }
+  .code-block .fn   { color: var(--teal); }
+  .code-block .ty   { color: var(--rust); }
+  .code-block .hl   { background: var(--accent-dim); padding: 0 4px; border-radius: 2px; }
+
+  .code-caption {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: -16px;
+    margin-bottom: 28px;
+    padding-left: 4px;
+    letter-spacing: 0.3px;
+  }
+
+  /* ============ PULL QUOTE ============ */
+  .pullquote {
+    margin: 48px 0;
+    padding: 0 0 0 28px;
+    border-left: 3px solid var(--accent);
+    font-style: italic;
+    font-size: 24px;
+    line-height: 1.4;
+    color: var(--text-bright);
+  }
+
+  /* ============ CALLOUTS ============ */
+  .callout {
+    margin: 32px 0;
+    padding: 18px 22px;
+    background: var(--teal-dim);
+    border-left: 3px solid var(--teal);
+    border-radius: 0 8px 8px 0;
+    font-size: 17px;
+    line-height: 1.55;
+  }
+
+  .callout--warn {
+    background: var(--gold-dim);
+    border-left-color: var(--gold);
+  }
+
+  .callout--trap {
+    background: var(--accent-dim);
+    border-left-color: var(--accent);
+  }
+
+  .callout__label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: var(--teal);
+    margin-bottom: 6px;
+    display: block;
+  }
+
+  .callout--warn .callout__label { color: var(--gold); }
+  .callout--trap .callout__label { color: var(--accent); }
+
+  .callout p { margin-bottom: 0; }
+  .callout p + p { margin-top: 10px; }
+
+  /* ============ DIAGRAM SHELL ============ */
+  .diagram {
+    margin: 40px 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 28px 24px;
+    box-shadow: 0 1px 3px rgba(60, 40, 20, 0.04);
+  }
+
+  .diagram__title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+
+  .diagram__caption {
+    font-family: var(--font-body);
+    font-size: 15px;
+    font-style: italic;
+    color: var(--text-dim);
+    margin-bottom: 22px;
+    max-width: 580px;
+  }
+
+  .diagram svg { display: block; width: 100%; height: auto; max-width: 100%; }
+
+  /* ============ TABLE ============ */
+  .table-wrap {
+    margin: 32px 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  table.data {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  table.data th {
+    background: var(--surface-recessed);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+    color: var(--text-dim);
+    text-align: left;
+    padding: 12px 16px;
+    border-bottom: 2px solid var(--border-bright);
+    white-space: nowrap;
+  }
+
+  table.data td {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    color: var(--text);
+  }
+
+  table.data tr:last-child td { border-bottom: none; }
+  table.data tr:nth-child(even) td { background: var(--accent-dim); }
+  table.data td:first-child {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--accent);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  /* ============ FLIP CARDS ============ */
+  .flip-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin: 32px 0;
+  }
+
+  @media (max-width: 560px) {
+    .flip-grid { grid-template-columns: 1fr; }
+  }
+
+  .flip-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 20px;
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.1s;
+    min-height: 96px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .flip-card:hover { border-color: var(--accent); }
+  .flip-card:active { transform: scale(0.99); }
+
+  .flip-card__front {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.45;
+  }
+
+  .flip-card__hint {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    margin-top: 10px;
+  }
+
+  .flip-card__back { display: none; }
+
+  .flip-card.flipped {
+    background: var(--surface-elevated);
+    min-height: 120px;
+  }
+
+  .flip-card.flipped .flip-card__hint { display: none; }
+
+  .flip-card.flipped .flip-card__back {
+    display: block;
+    margin-top: 10px;
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.45;
+    color: var(--text-dim);
+  }
+
+  .verdict {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    display: block;
+    margin-top: 8px;
+  }
+
+  .verdict--safe { color: var(--teal); }
+  .verdict--racy { color: var(--accent); }
+  .verdict--folk { color: var(--gold); }
+
+  /* ============ BRIDGE / FOOTER ============ */
+  .bridge {
+    margin-top: 80px;
+    padding: 36px 32px;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    border-left: 4px solid var(--accent);
+  }
+
+  .bridge__label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+
+  .bridge__title {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 24px;
+    color: var(--text-bright);
+    margin-bottom: 10px;
+  }
+
+  .bridge p {
+    color: var(--text-dim);
+    margin-bottom: 0;
+    font-size: 17px;
+  }
+
+  /* ============ ANIMATION ============ */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .hero, .toc, .section { animation: fadeUp 0.5s ease-out both; }
+  .toc { animation-delay: 0.05s; }
+  .section { animation-delay: 0.10s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+    html { scroll-behavior: auto; }
+  }
+
+  /* ============ RESPONSIVE ============ */
+  @media (max-width: 640px) {
+    .page { padding: 36px 20px 80px; }
+    body { font-size: 17px; }
+    .lead { font-size: 19px; }
+    h2 { font-size: 26px; margin-top: 48px; }
+    h3 { font-size: 19px; }
+    .pullquote { font-size: 20px; padding-left: 18px; }
+    .code-block { font-size: 12px; padding: 14px 16px; }
+    .diagram { padding: 20px 14px; }
+    .site-header { padding: 14px 20px; }
+  }
+
+  /* SVG diagram styles */
+  .diag-text { font-family: var(--font-mono); font-size: 11px; fill: var(--text); }
+  .diag-text--dim { fill: var(--text-dim); }
+  .diag-text--label { font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+  .diag-line { stroke: var(--border-bright); stroke-width: 1.2; fill: none; }
+  .diag-arrow { stroke: var(--text-dim); stroke-width: 1.2; fill: none; }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+
+<header class="site-header">
+  <span class="site-header__title">Python Concurrency Decoded</span>
+  <button class="theme-toggle" data-theme-toggle aria-label="Toggle theme">◐ Theme</button>
+</header>
+
+<article class="page prose">
+
+  <header class="hero">
+    <div class="hero__series">Python Concurrency · Part 1 of 3</div>
+    <h1 class="hero__title">The GIL is Not Your Enemy<br>(But It Is Your Problem)</h1>
+    <p class="hero__subtitle">A systems engineer's tour of CPython's Global Interpreter Lock — why it exists, what it actually protects, and where the rough edges are.</p>
+    <div class="hero__meta">
+      <span>~14 min read</span>
+      <span>Python 3.12+</span>
+      <span>Assumes: OS threads, Go concurrency</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <div class="toc__label">In this part</div>
+    <ol>
+      <li><a href="#s1">A PyObject is a refcounted box</a></li>
+      <li><a href="#s2">The race condition that justifies a lock</a></li>
+      <li><a href="#s3">One coarse lock instead of a million fine ones</a></li>
+      <li><a href="#s4">The release dance: where threads actually help</a></li>
+      <li><a href="#s5">The handoff — cooperative, not preemptive</a></li>
+      <li><a href="#s6">What the GIL does <em>not</em> protect</a></li>
+      <li><a href="#s7">So what's threading actually good for?</a></li>
+      <li><a href="#s8">The future — free-threaded Python</a></li>
+      <li><a href="#s9">Things to take with you</a></li>
+    </ol>
+  </nav>
+
+  <section class="section">
+
+    <p class="lead">Take a CPU-bound loop, split it across four Python threads on a four-core machine, and watch it run <em>slower</em> than the single-threaded version. Then take the same loop, replace it with reading from four sockets in parallel, and watch the threads work beautifully. The piece of machinery responsible for both outcomes is the same: a single mutex inside CPython called the Global Interpreter Lock.</p>
+
+    <p>If you've come from a language where threads do what you'd expect — Go, Rust, Java, C — Python's behaviour feels wrong on first encounter. It isn't. It's the consequence of a few reasonable engineering decisions made under real constraints, the kind every implementer faces. The constraints are still there; the decisions just locked in early.</p>
+
+    <p>So this post isn't a defence of the GIL, exactly. It's an unwinding. We'll look at what CPython chose, why it chose that, what the GIL actually guards (and, more interestingly, what it doesn't), and how it shapes the way you must reason about parallelism in Python. By the end you should be able to explain the GIL to a skeptic at a whiteboard, and predict — without running it — which of your "parallel" Python programs will speed up and which will silently slow down.</p>
+
+    <h2 id="s1"><span class="num">§1</span>A PyObject is a refcounted box</h2>
+
+    <p>To understand the GIL, you first have to understand what a Python value <em>is</em>. Every Python object — every <code>int</code>, every <code>list</code>, every function, every <code>None</code> — is a heap-allocated C struct whose header looks like this:</p>
+
+<pre class="code-block"><span class="com">// Include/object.h — simplified</span>
+<span class="kw">typedef struct</span> _object {
+    <span class="ty">Py_ssize_t</span>     <span class="hl">ob_refcnt</span>;   <span class="com">// reference count</span>
+    <span class="ty">PyTypeObject</span> *ob_type;     <span class="com">// pointer to type</span>
+} <span class="ty">PyObject</span>;</pre>
+    <p class="code-caption">cpython/Include/object.h — every object in Python begins with this header.</p>
+
+    <p>That highlighted field is the original sin and the entire reason this post exists. CPython does not have a tracing garbage collector as its primary memory reclamation mechanism. It has <strong>reference counting</strong>, with a cycle-detecting GC bolted on later to handle the cases refcounting can't.</p>
+
+    <p>Every time you bind a name, pass an argument, store something in a list, or even look up an attribute, CPython has to <code>Py_INCREF</code> the involved object. Every time a reference goes away, it has to <code>Py_DECREF</code>, and if the count hits zero, the object is freed immediately. This has nice properties: it's deterministic, it's cache-friendly, dead objects are reclaimed the moment they die, and there are no stop-the-world pauses for most workloads. Go traded all of that for a concurrent tracing collector with write barriers. CPython didn't.</p>
+
+    <p>It's the kind of choice that makes sense for a 1991 interpreter written for single-core Unix workstations, when an atomic compare-and-swap on every name binding would have absolutely tanked performance. The catch shows up only when you try to share the interpreter between two threads.</p>
+
+    <h2 id="s2"><span class="num">§2</span>The race condition that justifies a lock</h2>
+
+    <p>Picture two OS threads — real kernel-scheduled threads, the same kind your operating system would use for any program — both running Python code that does <code>x = some_global</code>. From Python's perspective, that's an attribute load followed by a name bind. From CPython's perspective, it's <code>Py_INCREF(some_global)</code> twice — a read of <code>ob_refcnt</code>, an add, and a write back.</p>
+
+    <p>Two reads, two adds, two writes, against one shared 64-bit field. If the two threads land on different CPU cores and run truly in parallel, the writes can interleave. This is the classic shared-memory hazard that every C, Java, or Go programmer has seen — same race, just one layer deeper.</p>
+
+    <div class="diagram">
+      <div class="diagram__title">Diagram 1 · refcount race</div>
+      <p class="diagram__caption">Two threads each try to <code>Py_INCREF</code> the same object. Without a lock, the writes serialise and one increment is lost. The object's true refcount diverges from what Python believes.</p>
+
+      <svg viewBox="0 0 680 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagram showing two threads racing on Py_INCREF causing a lost update">
+        <defs>
+          <pattern id="grid1" width="20" height="20" patternUnits="userSpaceOnUse">
+            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="currentColor" stroke-opacity="0.04" stroke-width="0.5"/>
+          </pattern>
+          <marker id="arrow1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" fill-opacity="0.5"/>
+          </marker>
+        </defs>
+        <rect width="680" height="280" fill="url(#grid1)" />
+
+        <text x="20" y="44" class="diag-text diag-text--label" fill="var(--thread-a)">Thread A</text>
+        <line x1="20" y1="60" x2="660" y2="60" class="diag-line" stroke="var(--thread-a)" stroke-opacity="0.3"/>
+
+        <text x="20" y="184" class="diag-text diag-text--label" fill="var(--thread-b)">Thread B</text>
+        <line x1="20" y1="200" x2="660" y2="200" class="diag-line" stroke="var(--thread-b)" stroke-opacity="0.3"/>
+
+        <text x="20" y="124" class="diag-text diag-text--label" fill="var(--text-dim)">ob_refcnt</text>
+        <line x1="20" y1="138" x2="660" y2="138" class="diag-line" stroke-dasharray="3 3"/>
+
+        <g fill="var(--thread-a)">
+          <circle cx="100" cy="60" r="5"/>
+          <text x="100" y="48" class="diag-text" text-anchor="middle" fill="var(--thread-a)">read</text>
+          <text x="100" y="80" class="diag-text" text-anchor="middle" fill="var(--text-dim)">sees 5</text>
+        </g>
+        <g fill="var(--thread-a)">
+          <circle cx="280" cy="60" r="5"/>
+          <text x="280" y="48" class="diag-text" text-anchor="middle" fill="var(--thread-a)">add 1</text>
+          <text x="280" y="80" class="diag-text" text-anchor="middle" fill="var(--text-dim)">local = 6</text>
+        </g>
+        <g fill="var(--thread-a)">
+          <circle cx="540" cy="60" r="5"/>
+          <text x="540" y="48" class="diag-text" text-anchor="middle" fill="var(--thread-a)">write</text>
+          <text x="540" y="80" class="diag-text" text-anchor="middle" fill="var(--text-dim)">stores 6</text>
+        </g>
+
+        <g fill="var(--thread-b)">
+          <circle cx="180" cy="200" r="5"/>
+          <text x="180" y="220" class="diag-text" text-anchor="middle" fill="var(--thread-b)">read</text>
+          <text x="180" y="234" class="diag-text" text-anchor="middle" fill="var(--text-dim)">sees 5</text>
+        </g>
+        <g fill="var(--thread-b)">
+          <circle cx="380" cy="200" r="5"/>
+          <text x="380" y="220" class="diag-text" text-anchor="middle" fill="var(--thread-b)">add 1</text>
+          <text x="380" y="234" class="diag-text" text-anchor="middle" fill="var(--text-dim)">local = 6</text>
+        </g>
+        <g fill="var(--thread-b)">
+          <circle cx="620" cy="200" r="5"/>
+          <text x="620" y="220" class="diag-text" text-anchor="middle" fill="var(--thread-b)">write</text>
+          <text x="620" y="234" class="diag-text" text-anchor="middle" fill="var(--text-dim)">stores 6</text>
+        </g>
+
+        <text x="60" y="130" class="diag-text" fill="var(--text)">5</text>
+        <text x="550" y="130" class="diag-text" fill="var(--text)" font-weight="600">6</text>
+        <text x="630" y="130" class="diag-text" fill="var(--accent)" font-weight="600">6</text>
+
+        <line x1="100" y1="65" x2="100" y2="135" stroke="var(--thread-a)" stroke-width="0.8" stroke-dasharray="2 3" opacity="0.5"/>
+        <line x1="540" y1="65" x2="540" y2="135" stroke="var(--thread-a)" stroke-width="0.8" stroke-dasharray="2 3" opacity="0.5"/>
+        <line x1="180" y1="195" x2="180" y2="143" stroke="var(--thread-b)" stroke-width="0.8" stroke-dasharray="2 3" opacity="0.5"/>
+        <line x1="620" y1="195" x2="620" y2="143" stroke="var(--thread-b)" stroke-width="0.8" stroke-dasharray="2 3" opacity="0.5"/>
+
+        <rect x="450" y="248" width="210" height="24" rx="4" fill="var(--accent-dim)" stroke="var(--accent)" stroke-width="1"/>
+        <text x="555" y="264" class="diag-text" text-anchor="middle" fill="var(--accent)" font-weight="600">expected 7 · got 6 · leak</text>
+      </svg>
+    </div>
+
+    <p>Two increments, one survives. The other thread's view of the world has been silently overwritten. The refcount is now <em>one too low</em>, which means the object will eventually be freed while a live reference still exists — a classic use-after-free, courtesy of an arithmetic race. The fix, in normal C code, is a <code>__atomic_add_fetch</code> or a mutex.</p>
+
+    <p>CPython does have a fix. It's just a much, much bigger lock than you'd guess.</p>
+
+    <h2 id="s3"><span class="num">§3</span>One coarse lock instead of a million fine ones</h2>
+
+    <p>The pragmatic question for the early CPython implementers was: how do we make refcounts safe without paying for atomics on every single name binding? You can imagine the alternatives:</p>
+
+    <ul style="margin: 0 0 24px 24px; line-height: 1.7;">
+      <li><strong>Atomic refcounts.</strong> Every <code>INCREF</code>/<code>DECREF</code> becomes a CAS. Even on a single-core machine you pay the memory barrier cost on every operation, and there are many such operations per Python statement.</li>
+      <li><strong>Per-object locks.</strong> Now every container, every dict, every iteration has to take and release a lock. The bookkeeping overhead is enormous, and any C extension built for the existing model would need rewriting.</li>
+      <li><strong>One global lock.</strong> Cheap to acquire and release on a single core. Every C extension automatically benefits because the lock is held whenever any Python code is running. Done.</li>
+    </ul>
+
+    <p>CPython picked the third one in 1992 and called it the Global Interpreter Lock. The decision predates SMP-as-default by more than a decade. It made Python easy to embed, made the C API trivial to write extensions against (numpy, lxml, pillow — none of them would exist in their current form without it), and made the interpreter blisteringly fast on the single-core hardware of the time.</p>
+
+    <p>The thing to internalise is what the GIL is actually a lock <em>on</em>: it's a mutex that any thread must hold to execute Python bytecode or touch interpreter state. It is not a lock on "Python" the language, or on user data structures, or on anything you can name from inside Python. It's a lock on the interpreter loop itself.</p>
+
+    <p>Python threads are real OS threads. On Linux, <code>threading.Thread.start()</code> creates a kernel thread through the standard POSIX threads library — the same primitive the C runtime uses. The OS scheduler treats them like any other thread. They just happen to spend most of their time blocked waiting for one specific mutex.</p>
+
+    <div class="pullquote">
+      Python threads are real OS threads. They just take turns holding a token, and only the token-holder is allowed to touch the interpreter.
+    </div>
+
+    <h2 id="s4"><span class="num">§4</span>The release dance: where threads actually help</h2>
+
+    <p>If the GIL were held continuously, threading in Python would be useless — worse than useless, because you'd pay the OS scheduling overhead and gain nothing. It isn't. The GIL is released around <em>any operation where the interpreter is going to wait on something external</em>.</p>
+
+    <p>The most important case: blocking I/O syscalls. When you call <code>socket.recv(4096)</code> in Python, the eventual C path looks like this, paraphrased:</p>
+
+<pre class="code-block"><span class="com">// Modules/socketmodule.c — heavily simplified</span>
+<span class="kw">static</span> <span class="ty">PyObject</span>* sock_recv(...) {
+    <span class="hl">Py_BEGIN_ALLOW_THREADS</span>     <span class="com">// release the GIL</span>
+    n = recv(fd, buf, len, flags);
+    <span class="hl">Py_END_ALLOW_THREADS</span>       <span class="com">// reacquire</span>
+    <span class="kw">return</span> PyBytes_FromStringAndSize(buf, n);
+}</pre>
+    <p class="code-caption">cpython/Modules/socketmodule.c — the BEGIN/END macros bracket the blocking syscall.</p>
+
+    <p>Those two macros are the secret. <code>Py_BEGIN_ALLOW_THREADS</code> saves the current thread state and releases the GIL. The thread then sits in <code>recv()</code>, which is just a kernel call — no Python state involved, nothing for the GIL to protect. While it blocks, any other Python thread is free to grab the GIL and run. When <code>recv()</code> returns, <code>Py_END_ALLOW_THREADS</code> reacquires the GIL (potentially waiting if another thread holds it) and we're back in business.</p>
+
+    <p>Anything that calls into a blocking syscall does this: <code>read</code>, <code>write</code>, <code>send</code>, <code>recv</code>, <code>select</code>, <code>poll</code>, <code>epoll_wait</code>, <code>connect</code>, <code>accept</code>. So does <code>time.sleep()</code>. So do well-behaved CPU-heavy C extensions: numpy releases the GIL around its array operations, hashlib releases it around <code>sha256.update()</code> on large buffers, zlib releases it around compression. This is why <code>numpy</code> arrays can actually saturate multiple cores from Python — the heavy lifting happens with the GIL <em>not held</em>.</p>
+
+    <div class="callout">
+      <span class="callout__label">Mental model</span>
+      <p>Treat the GIL as a token at a help desk. Only the holder can speak to the interpreter. If you want to wait on the kernel for a syscall, you put the token back on the desk while you wait. When the kernel answers, you queue up to grab the token again before you continue. C extensions can also voluntarily put the token down while doing pure C work.</p>
+    </div>
+
+    <h2 id="s5"><span class="num">§5</span>The handoff — cooperative, not preemptive</h2>
+
+    <p>What about pure-Python CPU work? A thread that's running <code>for i in range(10**8): x = x * 2</code> never makes a syscall. It would, in principle, hold the GIL forever. CPython has to force handoffs.</p>
+
+    <p>Pre-3.2, the interpreter checked a counter every 100 bytecodes and if it tripped, released and reacquired the GIL. This had pathological behaviour on multicore — the released GIL would often be grabbed back by the same thread before any other OS thread woke up, leading to long convoys.</p>
+
+    <p>Python 3.2 (Antoine Pitrou's redesign) replaced this with a time-based system. The interpreter doesn't decide on its own; instead, when a thread is waiting for the GIL, it sets a timer (default <strong>5 ms</strong>, tunable via <code>sys.setswitchinterval()</code>). If the holding thread hasn't released by then, the waiter sets a flag asking it to drop. The holder sees the flag at the next bytecode boundary and yields.</p>
+
+    <div class="diagram">
+      <div class="diagram__title">Diagram 2 · GIL handoff between two CPU-bound threads</div>
+      <p class="diagram__caption">Thread A holds the GIL and runs Python bytecode. After ~5 ms, thread B's request is honoured at the next safe point. The handoff is voluntary on A's part, but B is the one that arms the timer.</p>
+
+      <svg viewBox="0 0 680 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Timeline showing GIL handoff between two threads">
+        <defs>
+          <pattern id="grid2" width="20" height="20" patternUnits="userSpaceOnUse">
+            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="currentColor" stroke-opacity="0.04" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+        <rect width="680" height="220" fill="url(#grid2)" />
+
+        <text x="20" y="50" class="diag-text diag-text--label" fill="var(--thread-a)">Thread A</text>
+        <line x1="20" y1="62" x2="660" y2="62" class="diag-line"/>
+        <rect x="100" y="56" width="200" height="12" rx="2" fill="var(--thread-a)" opacity="0.7"/>
+        <rect x="420" y="56" width="80" height="12" rx="2" fill="var(--thread-a)" opacity="0.4"/>
+
+        <text x="200" y="84" class="diag-text" text-anchor="middle" fill="var(--text-dim)">holds GIL · runs bytecode</text>
+        <text x="460" y="84" class="diag-text" text-anchor="middle" fill="var(--text-dim)">waits</text>
+
+        <text x="20" y="140" class="diag-text diag-text--label" fill="var(--thread-b)">Thread B</text>
+        <line x1="20" y1="152" x2="660" y2="152" class="diag-line"/>
+        <rect x="100" y="146" width="200" height="12" rx="2" fill="var(--thread-b)" opacity="0.25"/>
+        <rect x="320" y="146" width="100" height="12" rx="2" fill="var(--thread-b)" opacity="0.7"/>
+        <rect x="500" y="146" width="160" height="12" rx="2" fill="var(--thread-b)" opacity="0.7"/>
+
+        <text x="200" y="174" class="diag-text" text-anchor="middle" fill="var(--text-dim)">waits · arms 5 ms timer</text>
+        <text x="370" y="174" class="diag-text" text-anchor="middle" fill="var(--text-dim)">runs</text>
+        <text x="580" y="174" class="diag-text" text-anchor="middle" fill="var(--text-dim)">runs</text>
+
+        <line x1="300" y1="40" x2="300" y2="180" stroke="var(--accent)" stroke-width="1" stroke-dasharray="3 3" opacity="0.7"/>
+        <text x="300" y="32" class="diag-text" text-anchor="middle" fill="var(--accent)" font-weight="600">5 ms · drop request</text>
+
+        <line x1="420" y1="40" x2="420" y2="180" stroke="var(--accent)" stroke-width="1" stroke-dasharray="3 3" opacity="0.5"/>
+        <text x="420" y="32" class="diag-text" text-anchor="middle" fill="var(--accent)">handoff</text>
+
+        <line x1="500" y1="40" x2="500" y2="180" stroke="var(--accent)" stroke-width="1" stroke-dasharray="3 3" opacity="0.5"/>
+        <text x="500" y="32" class="diag-text" text-anchor="middle" fill="var(--accent)">again</text>
+
+        <text x="20" y="208" class="diag-text" fill="var(--text-dim)">solid block = holds GIL · faded block = waiting on GIL</text>
+      </svg>
+    </div>
+
+    <p>Two things are worth noting. First, this is not preemption — Go 1.14 added genuine async preemption via signals, but CPython still relies on the holder cooperatively checking the flag. A C extension that holds the GIL and runs a long pure-C loop without checking <code>PyErr_CheckSignals()</code> or yielding can stall every other thread indefinitely. Second, the handoff happens at bytecode boundaries, not between any two C instructions. The unit of atomicity, from Python's perspective, is one bytecode op.</p>
+
+    <h2 id="s6"><span class="num">§6</span>What the GIL does <em>not</em> protect</h2>
+
+    <p>Here's where most people get burned, including people who think they understand it. The GIL serialises bytecode execution. It does not give you atomicity over the operations <em>you</em> care about in Python.</p>
+
+<pre class="code-block"><span class="kw">import</span> threading
+
+counter = <span class="num">0</span>
+
+<span class="kw">def</span> <span class="fn">work</span>():
+    <span class="kw">global</span> counter
+    <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(<span class="num">1_000_000</span>):
+        counter += <span class="num">1</span>
+
+threads = [threading.Thread(target=work) <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(<span class="num">8</span>)]
+<span class="kw">for</span> t <span class="kw">in</span> threads: t.<span class="fn">start</span>()
+<span class="kw">for</span> t <span class="kw">in</span> threads: t.<span class="fn">join</span>()
+
+<span class="fn">print</span>(counter)  <span class="com"># very rarely 8_000_000</span></pre>
+    <p class="code-caption">A "trivially parallel" counter. Run it and you'll get a different (smaller) number every time.</p>
+
+    <p>The problem is that <code>counter += 1</code> is not one bytecode. <code>dis.dis</code> tells the truth:</p>
+
+<pre class="code-block">$ python -c "import dis; dis.dis('counter += 1')"
+  0 RESUME                   0
+  2 <span class="hl">LOAD_NAME</span>                counter
+  4 LOAD_CONST               1
+  6 <span class="hl">BINARY_OP</span>                13 (+=)
+ 10 <span class="hl">STORE_NAME</span>               counter</pre>
+
+    <p>Three operations on the shared variable, with two potential preemption points between them. The GIL switch can land anywhere in that gap, between <code>LOAD_NAME</code> and <code>STORE_NAME</code>, and another thread can sneak in its own read-add-write before yours completes. The interleaving race is identical to the C version on <code>ob_refcnt</code> we drew earlier — same shape, different abstraction layer.</p>
+
+    <div class="callout callout--trap">
+      <span class="callout__label">The trap</span>
+      <p>"The GIL means I don't need locks" is the single most expensive misconception in Python concurrency. The GIL protects the interpreter's internals. Your own state still needs <code>threading.Lock</code>, <code>queue.Queue</code>, or atomic primitives — same as any other shared-memory language. The only thing the GIL gives you for free is that individual bytecode ops are atomic, which is a much weaker guarantee than people remember.</p>
+    </div>
+
+    <p>Certain operations <em>do</em> happen to be a single bytecode — <code>d[k] = v</code> on a built-in dict, <code>L.append(x)</code> on a list. These are atomic on current CPython as an implementation detail. They are not guaranteed by the language spec, and they don't compose: <code>d[k] = d[k] + 1</code> is two atomic ops with a window in between, and is exactly as racy as the counter example.</p>
+
+    <p>Before reading the next section: predict. Each of these is a real expression from real code. Which are atomic across threads, which are racy, and which are folklore you shouldn't rely on?</p>
+
+    <div class="flip-grid">
+      <div class="flip-card" data-flip>
+        <div class="flip-card__front"><code>L.append(item)</code><br>(L is a list)</div>
+        <div class="flip-card__hint">Tap to reveal</div>
+        <div class="flip-card__back">
+          A single <code>LIST_APPEND</code> bytecode. Atomic on current CPython, but it's an <em>implementation detail</em> — not a language guarantee.
+          <span class="verdict verdict--folk">FOLKLORE · don't build on it</span>
+        </div>
+      </div>
+
+      <div class="flip-card" data-flip>
+        <div class="flip-card__front"><code>counter += 1</code></div>
+        <div class="flip-card__hint">Tap to reveal</div>
+        <div class="flip-card__back">
+          Three bytecodes: <code>LOAD</code>, <code>BINARY_OP</code>, <code>STORE</code>. Two interleaving points. Lost updates whenever threads cross.
+          <span class="verdict verdict--racy">RACY · always</span>
+        </div>
+      </div>
+
+      <div class="flip-card" data-flip>
+        <div class="flip-card__front"><code>d[k] = v</code><br>(d is a built-in dict)</div>
+        <div class="flip-card__hint">Tap to reveal</div>
+        <div class="flip-card__back">
+          One <code>STORE_SUBSCR</code> bytecode. Atomic on CPython today. Same caveat as <code>list.append</code> — folklore, not spec.
+          <span class="verdict verdict--folk">FOLKLORE · don't build on it</span>
+        </div>
+      </div>
+
+      <div class="flip-card" data-flip>
+        <div class="flip-card__front"><code>d[k] = d[k] + 1</code></div>
+        <div class="flip-card__hint">Tap to reveal</div>
+        <div class="flip-card__back">
+          Two atomic ops with a window between. Read-modify-write, classic lost update. Same race as <code>counter += 1</code>.
+          <span class="verdict verdict--racy">RACY · always</span>
+        </div>
+      </div>
+
+      <div class="flip-card" data-flip>
+        <div class="flip-card__front"><code>q.put(x)</code><br>(q is <code>queue.Queue</code>)</div>
+        <div class="flip-card__hint">Tap to reveal</div>
+        <div class="flip-card__back">
+          <code>queue.Queue</code> takes an internal mutex on every method. Safe for multi-producer, multi-consumer use by design.
+          <span class="verdict verdict--safe">SAFE · designed for this</span>
+        </div>
+      </div>
+
+      <div class="flip-card" data-flip>
+        <div class="flip-card__front"><code>x = obj.field</code><br>(simple attribute read)</div>
+        <div class="flip-card__hint">Tap to reveal</div>
+        <div class="flip-card__back">
+          Single <code>LOAD_ATTR</code>. Atomic for the load itself, but says nothing about consistency with anything else. Reads of a field a writer is mid-updating are fine in isolation but stale in context.
+          <span class="verdict verdict--folk">FOLKLORE · trickier than it looks</span>
+        </div>
+      </div>
+    </div>
+
+    <p>Treat the dict/list "atomicity" as folklore. Don't build on it. When you need atomicity over operations <em>you</em> name, use <code>threading.Lock</code>, <code>queue.Queue</code>, or — for monotonic counters — <code>itertools.count()</code>, whose <code>__next__</code> is a single C call that holds the GIL throughout.</p>
+
+    <h2 id="s7"><span class="num">§7</span>So what's threading actually good for?</h2>
+
+    <p>For pure-Python CPU work: nothing. Worse than nothing — you'll pay GIL handoff overhead and convoy effects, and the program will slow down. The famous "<code>multiprocessing</code> is the only path" advice exists because of this.</p>
+
+    <p>For I/O-bound work: threading is fine, often the simplest choice. Each thread spends most of its life in <code>recv()</code> with the GIL released, so they don't actually contend much. A hundred threads serving a hundred slow database queries is a perfectly reasonable design, and historically it's what every Python web server did before the async era.</p>
+
+    <p>For CPU work in C extensions: threading is great, because the heavy loops drop the GIL. This is how numpy parallelises matrix operations across cores, how Pillow can resize images concurrently, how scrypt and bcrypt can hash passwords without blocking the interpreter. You get true parallelism for the C portion; the Python orchestration layer is still single-threaded but it doesn't matter because it's not the bottleneck.</p>
+
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table class="data">
+          <thead>
+            <tr><th>Workload</th><th>threading</th><th>multiprocessing</th><th>asyncio</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Pure Python · CPU-bound</td>
+              <td>Slower than serial. GIL contention dominates.</td>
+              <td>True parallelism. Pay fork/spawn + pickle cost.</td>
+              <td>Slower than serial. Single-threaded by design.</td>
+            </tr>
+            <tr>
+              <td>I/O-bound · few connections</td>
+              <td>Works well. Simple. Familiar locks/queues.</td>
+              <td>Overkill. IPC for every result.</td>
+              <td>Works well, slightly more setup.</td>
+            </tr>
+            <tr>
+              <td>I/O-bound · many thousands</td>
+              <td>Memory cost of stacks bites at ~1000+.</td>
+              <td>Will not scale this way.</td>
+              <td>The point of asyncio. <span style="color: var(--teal); font-weight: 500;">Part 2 →</span></td>
+            </tr>
+            <tr>
+              <td>C extension heavy lifting</td>
+              <td>Parallel if the extension releases the GIL.</td>
+              <td>Parallel, with serialization overhead.</td>
+              <td>Parallel via <code>run_in_executor</code> + threads.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <h2 id="s8"><span class="num">§8</span>The future — free-threaded Python</h2>
+
+    <p>The GIL has been the subject of removal proposals for at least 25 years. The serious one is <a href="https://peps.python.org/pep-0703/">PEP 703</a>, accepted in 2023 and shipping as an experimental build mode in Python 3.13 — <code>python3.13t</code>, the "t" for "no-GIL", because the names <code>nogil</code> and <code>free-threaded</code> were both somehow worse.</p>
+
+    <p>Removing the GIL means giving every <code>PyObject</code> its own internal locking for refcount updates, switching key built-in containers (dict, list, set) to fine-grained or biased reference counting, and rewriting any extension module that relied on "the GIL is held when my code runs" — which is most of them. It's a multi-year ecosystem migration, not a flag flip. Single-threaded performance regressed by around <strong>5–10%</strong> in early measurements, has been clawed back significantly, and is expected to converge on parity by 3.15 or so.</p>
+
+    <p>The interesting design tension is biased reference counting (Choi et al., 2018): in the common case where an object is only ever touched by its creating thread, the refcount is a plain non-atomic counter, the fast path. Only when a second thread first encounters the object does it pay to promote the counter to a shared atomic one. It's the kind of trick that recognises something real about how programs actually use objects, and it's why PEP 703 can hit performance numbers at all.</p>
+
+    <p>None of this matters yet for production code. The ecosystem isn't there. But it's the direction, and once you understand <em>why</em> the GIL exists — refcounting was load-bearing — you can read the no-GIL design and see exactly what each piece is solving.</p>
+
+    <h2 id="s9"><span class="num">§9</span>Things to take with you</h2>
+
+    <ul style="margin: 0 0 24px 24px; line-height: 1.8;">
+      <li>The GIL is one mutex around the interpreter. It exists because CPython's refcounted memory model has too many tiny critical sections for fine-grained locking to be cheap.</li>
+      <li>Python threads are real OS threads. They block on the GIL the same way any kernel-scheduled thread blocks on a mutex.</li>
+      <li>The GIL is dropped around blocking syscalls, around <code>time.sleep</code>, and around any C extension that opts in with <code>Py_BEGIN_ALLOW_THREADS</code>. This is why I/O-bound threading works.</li>
+      <li>Handoff between CPU-bound Python threads happens every ~5 ms, cooperatively, at a bytecode boundary. <code>sys.setswitchinterval()</code> tunes it.</li>
+      <li>The GIL protects the <em>interpreter's</em> state. It does not give you atomicity over your own variables. <code>counter += 1</code> across threads is racy. Always.</li>
+      <li>Free-threaded Python is coming but isn't the answer to your current problem.</li>
+    </ul>
+
+  </section>
+
+  <section class="bridge">
+    <div class="bridge__label">Coming next · Part 2</div>
+    <div class="bridge__title">Cooperative scheduling, an event loop, and a thousand connections on one thread</div>
+    <p>Threading is fine for tens of connections; processes are fine for CPU work. Neither scales to thousands of slow network conversations. The next post is about <code>asyncio</code> — what an event loop actually does (<code>epoll</code> with a task queue, basically), what <code>async</code>/<code>await</code> compiles down to, and where it bites.</p>
+  </section>
+
+</article>
+
+<script>
+  // Theme toggle — respects saved preference, falls back to prefers-color-scheme
+  (function () {
+    const root = document.documentElement;
+    const saved = localStorage.getItem('theme');
+    if (saved) {
+      root.setAttribute('data-theme', saved);
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      root.setAttribute('data-theme', 'dark');
+    }
+    document.querySelectorAll('[data-theme-toggle]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        root.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+      });
+    });
+  })();
+
+  // Reading progress
+  (function () {
+    const bar = document.getElementById('progress');
+    if (!bar) return;
+    let raf = 0;
+    const update = () => {
+      const doc = document.documentElement;
+      const scrolled = doc.scrollTop || document.body.scrollTop;
+      const height = doc.scrollHeight - doc.clientHeight;
+      bar.style.width = height > 0 ? (scrolled / height * 100) + '%' : '0%';
+      raf = 0;
+    };
+    window.addEventListener('scroll', () => {
+      if (!raf) raf = requestAnimationFrame(update);
+    }, { passive: true });
+    update();
+  })();
+
+  // Flip cards
+  document.querySelectorAll('[data-flip]').forEach(card => {
+    card.addEventListener('click', () => card.classList.toggle('flipped'));
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    card.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        card.classList.toggle('flipped');
+      }
+    });
+  });
+</script>
+
+</body>
+</html>

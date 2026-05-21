@@ -67,6 +67,8 @@ Track with TaskCreate. Mark done as you go. Don't batch.
 - Tables for axis comparisons (3+ things × 3+ properties). Always beats a paragraph.
 - Code blocks for code. Real syntax highlighting via spans, not a heavy lib.
 - Numbered sections (§1, §2…). The reader can navigate. The TOC writes itself.
+- **A real TOC block when the post has 7+ sections.** Decimal-leading-zero (`01`, `02`…) in monospace, anchor links to section IDs. It doubles as a thesis preview — the reader skims it and decides whether to commit.
+- **Header strip with site identity + theme toggle.** Explicit toggle beats `prefers-color-scheme` alone — it reads as a designed object, not a passive setting. Pair with a thin reading-progress bar *only* on posts >10 min.
 - `code` *inside* prose for any identifier, syscall, flag. It signals "this is a real name, not jargon."
 - A "things to take with you" list before the bridge. Five bullets max. Each one a load-bearing claim.
 
@@ -114,10 +116,10 @@ Rotate. Don't reuse the last one.
 
 Interactivity is **progressive disclosure**, not decoration. A static diagram is a map; a stepper is a guided tour. The reader controls the pace of complexity, or there's no point.
 
-Use interactivity only when the lesson is *timing*, *parameter sensitivity*, or *causality*. Specifically:
+Use interactivity only when the lesson is *timing*, *parameter sensitivity*, *causality*, or *prediction-then-reveal*. Specifically:
 
-- **Yes:** race conditions (scrub time, see the outcome change), event loops (step through), parameter sliders (tune work duration, watch stall grow), state machines (click through states).
-- **No:** "run this code" buttons, syntax-highlight-toggling, anything that lets the reader edit prose, decorative motion.
+- **Yes:** race conditions (scrub time, see the outcome change), event loops (step through), parameter sliders (tune work duration, watch stall grow), state machines (click through states), **flip-cards** for "predict the behavior" grids (reader commits to a guess before the verdict — earns engagement), **tabs** when there's one logical slot with multiple genuine variants to compare (e.g. `select` vs `poll` vs `epoll`). Tabs are *not* for sequential content — that's hidden chapters.
+- **No:** "run this code" buttons, syntax-highlight-toggling, anything that lets the reader edit prose, decorative motion, auto-playing animations that don't stop.
 
 **Budget:** total JS ≤ 40KB minified. anime.js for sequenced reveals. htm+preact only if a widget has 3+ pieces of state. Otherwise vanilla JS + RAF.
 
@@ -143,6 +145,30 @@ Run through this cold. If any answer is no, fix before shipping.
 - [ ] Is the first paragraph already *inside* the topic, not introducing it?
 - [ ] Does the bridge name something specific?
 - [ ] Did I read it cold and look for slop?
+
+## Augmenting this skill — the component library
+
+`skills/explainer/library/` holds reusable building blocks: the theme toggle, the numbered TOC, flip-card grids, step-through controls, tab switchers, the reading-progress bar. Things that aren't *about* any one post but recur across them.
+
+**When to extract.** Don't extract before second use. One use is a custom thing; two is a pattern; three means the library entry was overdue. If you build something genuinely reusable while writing a post — extract it as you go. If you're unsure, leave it inline. Wrong abstractions are more expensive than duplication.
+
+**What belongs.** Chrome and interaction primitives: header/nav, TOC, theme toggle, progress bar, tab switcher, flip-card grid, step controls, swimlane Gantt shells. Things whose contract is "here is a slot, fill it."
+
+**What doesn't.** Pull quotes, content callouts, topic-specific diagrams. Those are local to a post — copying churns nothing because each one is bespoke anyway.
+
+**Rules for a library component:**
+
+- **Single file** at `skills/explainer/library/<name>.html`. HTML + scoped CSS + vanilla JS in one file. Pasteable. A reader should grasp it in 30 seconds.
+- **Themed only via CSS custom properties.** Use the same variable names host pages use: `--bg`, `--bg-tint`, `--surface`, `--text`, `--text-dim`, `--accent`, `--teal`, `--border`. Never hardcode a color. The component inherits the host's palette dice roll — that's the point.
+- **No external runtime deps** beyond fonts the host page already loads. No npm, no build step, no CDN libraries.
+- **JS budget: ≤ 2 KB per component.** Vanilla. No frameworks. If it doesn't fit, it's a feature not a primitive — keep it in the post.
+- **Informative resting state** (same as Step 7). A reader who never interacts with it still gets the lesson.
+- **One `data-*` attribute as the public API where possible.** E.g. `<button data-theme-toggle>`. Lets the host wire it without reading internals.
+- **Top-of-file comment block** stating: purpose, public CSS vars consumed, public attributes, one-line example usage. Three lines max.
+
+**`library/README.md`** is the index. One line per component: name, purpose, where first used. If the index grows past 20 entries the library is too granular — collapse.
+
+**Discipline:** when you copy a component into a new post, *update it back in the library* if you found a refinement. The library is the canonical version, not a snapshot. If a refinement is post-specific, leave the library alone and fork it inline.
 
 ## Footer
 
