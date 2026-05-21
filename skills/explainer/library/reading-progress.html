@@ -1,0 +1,38 @@
+<!--
+  reading-progress — thin fixed bar tracking scroll position.
+  Vars consumed: --accent, --teal.
+  Public attr: #progress on the bar element. Place near the top of <body>.
+  Example: <div class="progress" id="progress"></div>
+-->
+<style>
+  .progress {
+    position: fixed;
+    top: 0; left: 0;
+    width: 0%;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--teal));
+    z-index: 100;
+    transition: width 0.08s linear;
+  }
+</style>
+
+<div class="progress" id="progress"></div>
+
+<script>
+(function () {
+  const bar = document.getElementById('progress');
+  if (!bar) return;
+  let raf = 0;
+  const update = () => {
+    const doc = document.documentElement;
+    const scrolled = doc.scrollTop || document.body.scrollTop;
+    const height = doc.scrollHeight - doc.clientHeight;
+    bar.style.width = height > 0 ? (scrolled / height * 100) + '%' : '0%';
+    raf = 0;
+  };
+  window.addEventListener('scroll', () => {
+    if (!raf) raf = requestAnimationFrame(update);
+  }, { passive: true });
+  update();
+})();
+</script>

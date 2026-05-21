@@ -34,6 +34,8 @@ Whatever you roll/get, **commit to it.** Don't average. Don't hedge.
 
 This step is not optional. If you skip it, you will default to the last successful aesthetic and the corpus rots.
 
+**Carve-out — multi-part series.** The dice are rolled once *per series*, not per post. Re-rolling the palette or fonts mid-series fragments the corpus — the reader feels the discontinuity as design churn, not variety. Inherit visual identity from the previous part; vary at the level of layout rhythm, diagram approach, or section pacing instead. Step 0 reactivates for the next *standalone* post or *new* series. If unsure whether a request is a new series or a continuation, ask before rolling.
+
 ## Step 1 — The thesis of this skill
 
 Explainers I write are for one reader: someone with adjacent expertise who wants the *internals*, not the surface. They are not tutorials. They are not "intro to X." Treat the reader as a peer who's just walked in late and needs the load-bearing parts.
@@ -67,6 +69,7 @@ Track with TaskCreate. Mark done as you go. Don't batch.
 - Tables for axis comparisons (3+ things × 3+ properties). Always beats a paragraph.
 - Code blocks for code. Real syntax highlighting via spans, not a heavy lib.
 - Numbered sections (§1, §2…). The reader can navigate. The TOC writes itself.
+- **Section titles are declarative claims, not labels.** Each `<h2>` should be a move in a continuous argument — *"One syscall holds it up"*, *"The connection pool is a queue"*, *"What `await` actually does"*. The next paragraph should feel like the obvious continuation. Test: read just the TOC. Does it tell a story, or does it list topics? If it lists, rewrite. And open each section with a connective to the previous one; the post is one walk, not a stack of info dumps.
 - **A real TOC block when the post has 7+ sections.** Decimal-leading-zero (`01`, `02`…) in monospace, anchor links to section IDs. It doubles as a thesis preview — the reader skims it and decides whether to commit.
 - **Header strip with site identity + theme toggle.** Explicit toggle beats `prefers-color-scheme` alone — it reads as a designed object, not a passive setting. Pair with a thin reading-progress bar *only* on posts >10 min.
 - `code` *inside* prose for any identifier, syscall, flag. It signals "this is a real name, not jargon."
@@ -83,6 +86,7 @@ Track with TaskCreate. Mark done as you go. Don't batch.
 - **No emoji.** Anywhere. Unless I explicitly ask.
 - **No fabricated numbers.** Real measurement or no number.
 - **No tutorial register.** "Let's…", "First we…", "As you can see…" — strip all of it.
+- **No clickbait headings.** *"The X you didn't know"*, *"What X really does"*, *"The Y that Z hides"* — Twitter-thread voice. Same slop signal as gradient text. Section headings are claims (see Step 4), not hooks.
 - **No framework SPAs.** Pages are static HTML files. Vanilla JS where needed.
 
 ## Step 6 — Variety bank

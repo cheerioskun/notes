@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Servers, in Earnest — Part 3 of Python Concurrency</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'Crimson Pro', Georgia, serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  }
+
+  html[data-theme="light"] {
+    --bg: #faf6f0;
+    --bg-tint: #f4ece0;
+    --surface: #ffffff;
+    --surface-elevated: #fffdf9;
+    --surface-recessed: #f1e9db;
+    --border: rgba(60, 40, 20, 0.10);
+    --border-bright: rgba(60, 40, 20, 0.20);
+    --text: #2a2018;
+    --text-bright: #1a130c;
+    --text-dim: #6b5840;
+    --text-muted: #8a7660;
+
+    --accent: #b8472a;
+    --accent-dim: rgba(184, 71, 42, 0.10);
+    --accent-bright: #d4583a;
+    --teal: #1e5f5c;
+    --teal-dim: rgba(30, 95, 92, 0.10);
+    --teal-bright: #2a807c;
+    --gold: #b8860b;
+    --gold-dim: rgba(184, 134, 11, 0.10);
+    --rust: #8b3a1f;
+    --sage: #6a7d3c;
+    --sage-dim: rgba(106, 125, 60, 0.10);
+
+    --thread-a: #b8472a;
+    --thread-b: #1e5f5c;
+  }
+
+  html[data-theme="dark"] {
+    --bg: #18120c;
+    --bg-tint: #221a12;
+    --surface: #221a12;
+    --surface-elevated: #2a2018;
+    --surface-recessed: #14100a;
+    --border: rgba(240, 220, 190, 0.10);
+    --border-bright: rgba(240, 220, 190, 0.22);
+    --text: #efe4d2;
+    --text-bright: #fff8e8;
+    --text-dim: #b8a888;
+    --text-muted: #948060;
+
+    --accent: #e87a5b;
+    --accent-dim: rgba(232, 122, 91, 0.14);
+    --accent-bright: #f29478;
+    --teal: #4dbab5;
+    --teal-dim: rgba(77, 186, 181, 0.14);
+    --teal-bright: #6dd0cb;
+    --gold: #e0b048;
+    --gold-dim: rgba(224, 176, 72, 0.14);
+    --rust: #c66f4a;
+    --sage: #a8b85e;
+    --sage-dim: rgba(168, 184, 94, 0.14);
+
+    --thread-a: #e87a5b;
+    --thread-b: #4dbab5;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse at 12% 0%, var(--teal-dim) 0%, transparent 45%),
+      radial-gradient(ellipse at 88% 12%, var(--accent-dim) 0%, transparent 50%);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 19px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    overflow-wrap: break-word;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+  body * { min-width: 0; }
+
+  /* ============ READING PROGRESS ============ */
+  .progress {
+    position: fixed;
+    top: 0; left: 0;
+    width: 0%;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--teal));
+    z-index: 100;
+    transition: width 0.08s linear;
+  }
+
+  /* ============ HEADER STRIP ============ */
+  .site-header {
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  .site-header__title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .theme-toggle {
+    background: none;
+    border: 1px solid var(--border-bright);
+    color: var(--text-dim);
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+  }
+  .theme-toggle:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .page { max-width: 720px; margin: 0 auto; padding: 60px 32px 120px; }
+
+  /* ============ TOC ============ */
+  .toc {
+    background: var(--surface-recessed);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 22px 28px;
+    margin-bottom: 56px;
+  }
+  .toc__label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 14px;
+  }
+  .toc ol {
+    list-style: none;
+    counter-reset: toc;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 28px;
+  }
+  @media (max-width: 560px) {
+    .toc ol { grid-template-columns: 1fr; }
+  }
+  .toc li {
+    counter-increment: toc;
+    line-height: 1.4;
+  }
+  .toc a {
+    color: var(--text-dim);
+    text-decoration: none;
+    font-size: 15px;
+    display: flex;
+    gap: 12px;
+    align-items: baseline;
+    padding: 4px 0;
+    transition: color 0.15s;
+  }
+  .toc a:hover { color: var(--accent); }
+  .toc a::before {
+    content: counter(toc, decimal-leading-zero);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent);
+    font-weight: 500;
+    min-width: 24px;
+  }
+
+  /* HERO */
+  .hero { margin-bottom: 40px; padding-bottom: 36px; border-bottom: 1px solid var(--border); }
+  .hero__series {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--accent);
+    margin-bottom: 20px;
+  }
+  .hero__series::before {
+    content: ''; display: inline-block; width: 24px; height: 1px;
+    background: var(--accent); vertical-align: middle; margin-right: 12px;
+    transform: translateY(-2px);
+  }
+  .hero__progress {
+    display: inline-block; margin-left: 14px; font-family: var(--font-mono);
+    font-size: 11px; letter-spacing: 4px; color: var(--text-muted);
+  }
+  .hero__progress .on { color: var(--accent); }
+  .hero__title {
+    font-family: var(--font-body); font-weight: 600;
+    font-size: clamp(36px, 5.5vw, 54px); line-height: 1.05;
+    letter-spacing: -1.2px; color: var(--text-bright);
+    margin-bottom: 18px; text-wrap: balance;
+  }
+  .hero__subtitle {
+    font-style: italic; font-size: 22px; line-height: 1.4;
+    color: var(--text-dim); max-width: 600px; margin-bottom: 28px;
+  }
+  .hero__meta {
+    font-family: var(--font-mono); font-size: 12px; color: var(--text-muted);
+    display: flex; gap: 20px; flex-wrap: wrap;
+  }
+  .hero__meta span { display: inline-flex; align-items: center; gap: 6px; }
+  .hero__meta span::before {
+    content: ''; width: 4px; height: 4px;
+    background: var(--text-muted); border-radius: 50%;
+  }
+  .hero__meta span:first-child::before { display: none; }
+
+  /* PROSE */
+  .prose p { margin-bottom: 1.3em; text-wrap: pretty; }
+  .prose strong { color: var(--text-bright); font-weight: 600; }
+  .prose em { font-style: italic; color: var(--text-bright); }
+  .prose a {
+    color: var(--accent); text-decoration: underline;
+    text-decoration-thickness: 1px; text-underline-offset: 3px;
+  }
+  .prose code {
+    font-family: var(--font-mono); font-size: 0.82em;
+    background: var(--accent-dim); color: var(--accent);
+    padding: 1px 6px; border-radius: 3px; font-weight: 500;
+  }
+
+  .lead {
+    font-size: 22px; line-height: 1.55;
+    color: var(--text-bright); margin-bottom: 36px;
+  }
+
+  /* HEADINGS */
+  h2 {
+    font-family: var(--font-body); font-weight: 600; font-size: 32px;
+    line-height: 1.15; letter-spacing: -0.6px; color: var(--text-bright);
+    margin-top: 64px; margin-bottom: 8px; text-wrap: balance;
+    scroll-margin-top: 24px;
+  }
+  h2 .num {
+    font-family: var(--font-mono); font-size: 13px; font-weight: 500;
+    color: var(--accent); letter-spacing: 1px; display: block; margin-bottom: 6px;
+  }
+  h3 {
+    font-family: var(--font-body); font-weight: 600; font-size: 22px;
+    line-height: 1.3; color: var(--text-bright);
+    margin-top: 36px; margin-bottom: 12px;
+  }
+
+  /* CODE */
+  .code-block {
+    font-family: var(--font-mono); font-size: 13px; line-height: 1.65;
+    background: var(--surface-recessed); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 16px 20px; margin: 24px 0;
+    overflow-x: auto; white-space: pre;
+    box-shadow: inset 0 1px 3px rgba(60, 40, 20, 0.04);
+  }
+  .code-block .kw  { color: var(--accent); font-weight: 500; }
+  .code-block .com { color: var(--text-muted); font-style: italic; }
+  .code-block .str { color: var(--sage); }
+  .code-block .num { color: var(--gold); }
+  .code-block .fn  { color: var(--teal); }
+  .code-block .ty  { color: var(--rust); }
+  .code-block .hl  { background: var(--accent-dim); padding: 0 4px; border-radius: 2px; }
+
+  .code-caption {
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+    margin-top: -16px; margin-bottom: 28px; padding-left: 4px; letter-spacing: 0.3px;
+  }
+
+  /* PULL QUOTE */
+  .pullquote {
+    margin: 48px 0; padding: 0 0 0 28px;
+    border-left: 3px solid var(--accent);
+    font-style: italic; font-size: 24px; line-height: 1.4;
+    color: var(--text-bright);
+  }
+
+  /* CALLOUTS */
+  .callout {
+    margin: 32px 0; padding: 18px 22px;
+    background: var(--teal-dim); border-left: 3px solid var(--teal);
+    border-radius: 0 8px 8px 0;
+    font-size: 17px; line-height: 1.55;
+  }
+  .callout--warn { background: var(--gold-dim); border-left-color: var(--gold); }
+  .callout--trap { background: var(--accent-dim); border-left-color: var(--accent); }
+  .callout__label {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    letter-spacing: 1.8px; text-transform: uppercase;
+    color: var(--teal); margin-bottom: 6px; display: block;
+  }
+  .callout--warn .callout__label { color: var(--gold); }
+  .callout--trap .callout__label { color: var(--accent); }
+  .callout p { margin-bottom: 0; }
+  .callout p + p { margin-top: 10px; }
+  .callout code {
+    font-family: var(--font-mono); font-size: 0.82em;
+    background: rgba(0,0,0,0.04); color: inherit;
+    padding: 1px 5px; border-radius: 3px;
+  }
+
+  /* DIAGRAM */
+  .diagram {
+    margin: 40px 0; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 28px 24px; box-shadow: 0 1px 3px rgba(60, 40, 20, 0.04);
+  }
+  .diagram__title {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 4px;
+  }
+  .diagram__caption {
+    font-family: var(--font-body); font-size: 15px; font-style: italic;
+    color: var(--text-dim); margin-bottom: 22px; max-width: 580px;
+  }
+  .diagram svg { display: block; width: 100%; height: auto; max-width: 100%; }
+
+  /* TABLE */
+  .table-wrap {
+    margin: 32px 0; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  }
+  .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.data {
+    width: 100%; border-collapse: collapse;
+    font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  }
+  table.data th {
+    background: var(--surface-recessed);
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1.4px; color: var(--text-dim);
+    text-align: left; padding: 12px 16px;
+    border-bottom: 2px solid var(--border-bright); white-space: nowrap;
+  }
+  table.data td {
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+    vertical-align: top; color: var(--text);
+  }
+  table.data tr:last-child td { border-bottom: none; }
+  table.data tr:nth-child(even) td { background: var(--accent-dim); }
+  table.data td:first-child {
+    font-family: var(--font-mono); font-size: 13px;
+    color: var(--accent); font-weight: 500; white-space: nowrap;
+  }
+
+  /* TAKEAWAY LIST */
+  .takeaways {
+    margin: 32px 0; padding: 24px 28px;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border); border-radius: 10px;
+    list-style: none;
+  }
+  .takeaways li {
+    font-size: 18px; padding: 10px 0;
+    border-bottom: 1px dashed var(--border);
+    display: flex; gap: 14px;
+  }
+  .takeaways li:last-child { border-bottom: none; }
+  .takeaways li::before {
+    content: '·'; color: var(--accent); font-weight: 600;
+    font-family: var(--font-mono); flex-shrink: 0;
+  }
+
+  /* BRIDGE */
+  .bridge {
+    margin-top: 80px; padding: 36px 32px;
+    background: var(--surface-elevated); border: 1px solid var(--border);
+    border-radius: 12px; border-left: 4px solid var(--accent);
+  }
+  .bridge__label {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 12px;
+  }
+  .bridge__title {
+    font-weight: 600; font-size: 24px;
+    color: var(--text-bright); margin-bottom: 10px;
+  }
+  .bridge p { color: var(--text-dim); margin-bottom: 14px; font-size: 17px; }
+  .bridge p:last-child { margin-bottom: 0; }
+  .bridge ul {
+    margin: 4px 0 16px 22px; padding: 0;
+    color: var(--text-dim); font-size: 17px; line-height: 1.6;
+  }
+  .bridge ul li { margin-bottom: 6px; }
+
+  /* ANIMATION */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .hero, .toc, .section { animation: fadeUp 0.5s ease-out both; }
+  .toc { animation-delay: 0.05s; }
+  .section { animation-delay: 0.10s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .page { padding: 36px 20px 80px; }
+    .site-header { padding: 14px 20px; }
+    body { font-size: 17px; }
+    .lead { font-size: 19px; }
+    h2 { font-size: 26px; margin-top: 48px; }
+    h3 { font-size: 19px; }
+    .pullquote { font-size: 20px; padding-left: 18px; }
+    .code-block { font-size: 12px; padding: 14px 16px; }
+    .diagram { padding: 20px 14px; }
+  }
+
+  /* SVG */
+  .diag-text { font-family: var(--font-mono); font-size: 11px; fill: var(--text); }
+  .diag-text--dim { fill: var(--text-dim); }
+  .diag-text--label { font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+  .diag-line { stroke: var(--border-bright); stroke-width: 1.2; fill: none; }
+  .diag-arrow { stroke: var(--text-dim); stroke-width: 1.2; fill: none; }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+
+<header class="site-header">
+  <span class="site-header__title">Python Concurrency Decoded</span>
+  <button class="theme-toggle" data-theme-toggle aria-label="Toggle theme">◐ Theme</button>
+</header>
+
+<article class="page prose">
+
+  <header class="hero">
+    <div class="hero__series">
+      Python Concurrency · Part 3 of 3
+      <span class="hero__progress"><span class="on">●</span><span class="on">●</span><span class="on">●</span></span>
+    </div>
+    <h1 class="hero__title">Servers, in Earnest</h1>
+    <p class="hero__subtitle">Four layers sit between the loop and your handler. Each one adds opinions; each one leaks under load.</p>
+    <div class="hero__meta">
+      <span>~15 min read</span>
+      <span>Python 3.11+</span>
+      <span>Assumes: Parts 1 &amp; 2</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <div class="toc__label">In this part</div>
+    <ol>
+      <li><a href="#s1">ASGI is three messages</a></li>
+      <li><a href="#s2">What uvicorn does between the socket and your code</a></li>
+      <li><a href="#s3">Sync handlers, and the thread pool you didn't ask for</a></li>
+      <li><a href="#s4">The connection pool is a queue</a></li>
+      <li><a href="#s5">The blocking that hides in libraries</a></li>
+      <li><a href="#s6">Shutdown, and the request that doesn't know it's over</a></li>
+      <li><a href="#s7">What to watch</a></li>
+      <li><a href="#s8">Things to take with you</a></li>
+    </ol>
+  </nav>
+
+  <section class="section">
+
+    <p class="lead">Part 2 ended with a scheduler that fits in fifty lines. A real production server adds a protocol (ASGI), a web server that speaks it (uvicorn), a framework that hides the protocol (Starlette), and a framework that hides the framework (FastAPI). That is four layers between the socket and your handler. Each one is small in isolation. The trouble lives where they meet — and the trouble is rarely exotic. It is a thread pool you did not know about, a queue you did not see, a shutdown that doesn't actually shut down. This post is about the seams.</p>
+
+    <div class="diagram">
+      <div class="diagram__title">The stack at a glance</div>
+      <p class="diagram__caption">Each layer is small. The interesting failures live at the joins — and most of this post is a walk down them.</p>
+
+      <svg viewBox="0 0 680 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A vertical stack diagram showing FastAPI, Starlette, the ASGI protocol, uvicorn, asyncio, and epoll, with brief notes on each layer's responsibility">
+        <defs>
+          <marker id="arrStk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" fill-opacity="0.55"/>
+          </marker>
+        </defs>
+
+        <!-- FastAPI -->
+        <rect x="120" y="20" width="440" height="36" rx="4" fill="var(--accent-dim)" stroke="var(--accent)" stroke-width="1.2"/>
+        <text x="140" y="42" class="diag-text" fill="var(--accent)" font-weight="600">FastAPI</text>
+        <text x="560" y="42" text-anchor="end" class="diag-text diag-text--dim">DI · validation · OpenAPI</text>
+
+        <!-- Starlette -->
+        <rect x="120" y="64" width="440" height="36" rx="4" fill="var(--surface-recessed)" stroke="var(--border-bright)"/>
+        <text x="140" y="86" class="diag-text" font-weight="600">Starlette</text>
+        <text x="560" y="86" text-anchor="end" class="diag-text diag-text--dim">routing · middleware · request/response</text>
+
+        <!-- ASGI -->
+        <rect x="120" y="108" width="440" height="36" rx="4" fill="var(--gold-dim)" stroke="var(--gold)" stroke-width="1.2" stroke-dasharray="3 2"/>
+        <text x="140" y="130" class="diag-text" fill="var(--gold)" font-weight="600">ASGI</text>
+        <text x="560" y="130" text-anchor="end" class="diag-text diag-text--dim">scope · receive · send  (a contract, not a layer)</text>
+
+        <!-- uvicorn -->
+        <rect x="120" y="152" width="440" height="36" rx="4" fill="var(--surface-recessed)" stroke="var(--border-bright)"/>
+        <text x="140" y="174" class="diag-text" font-weight="600">uvicorn</text>
+        <text x="560" y="174" text-anchor="end" class="diag-text diag-text--dim">accept · h11/httptools · Task per request</text>
+
+        <!-- asyncio -->
+        <rect x="120" y="196" width="440" height="36" rx="4" fill="var(--teal-dim)" stroke="var(--teal)" stroke-width="1.2"/>
+        <text x="140" y="218" class="diag-text" fill="var(--teal)" font-weight="600">asyncio</text>
+        <text x="560" y="218" text-anchor="end" class="diag-text diag-text--dim">_run_once · selectors · Futures</text>
+
+        <!-- epoll -->
+        <rect x="120" y="240" width="440" height="30" rx="4" fill="var(--surface)" stroke="var(--border-bright)"/>
+        <text x="140" y="260" class="diag-text" fill="var(--text-dim)" font-weight="600">epoll / kqueue</text>
+        <text x="560" y="260" text-anchor="end" class="diag-text diag-text--dim">kernel · the only place we block</text>
+
+        <!-- side arrow -->
+        <path d="M 90 32 L 90 256" class="diag-arrow" stroke-dasharray="3 3" opacity="0.5"/>
+        <path d="M 90 256 L 110 256" class="diag-arrow" marker-end="url(#arrStk)" opacity="0.6"/>
+        <text x="60" y="148" class="diag-text diag-text--dim" transform="rotate(-90 60 148)">a request travels down</text>
+      </svg>
+    </div>
+
+    <h2 id="s1"><span class="num">§1</span>ASGI is three messages</h2>
+
+    <p>The first piece worth knowing about, just below FastAPI, is the protocol uvicorn uses to talk to your framework. It is called ASGI, and it is shockingly small. Reading it once makes the rest of the stack legible — every layer above is a different opinion about what to do with three pieces of data.</p>
+
+    <p>An ASGI application is an async callable. It takes three arguments: a <code>scope</code> dict describing the connection, an async <code>receive()</code> that returns the next inbound event, and an async <code>send()</code> that emits an outbound event. That is the entire interface.</p>
+
+<pre class="code-block"><span class="kw">async def</span> <span class="fn">app</span>(scope, receive, send):
+    <span class="kw">assert</span> scope[<span class="str">"type"</span>] == <span class="str">"http"</span>
+    <span class="kw">await</span> <span class="fn">send</span>({
+        <span class="str">"type"</span>: <span class="str">"http.response.start"</span>,
+        <span class="str">"status"</span>: <span class="num">200</span>,
+        <span class="str">"headers"</span>: [(<span class="str">b"content-type"</span>, <span class="str">b"text/plain"</span>)],
+    })
+    <span class="kw">await</span> <span class="fn">send</span>({
+        <span class="str">"type"</span>: <span class="str">"http.response.body"</span>,
+        <span class="str">"body"</span>: <span class="str">b"hello\n"</span>,
+    })</pre>
+    <p class="code-caption">A complete ASGI HTTP application. Save it as app.py, run uvicorn app:app, curl it.</p>
+
+    <p>The <code>scope</code> is a plain dict — method, path, headers, query string, client address. <code>receive</code> yields events like <code>http.request</code> (with a <code>body</code> and a <code>more_body</code> flag for streaming). <code>send</code> takes events like <code>http.response.start</code> and <code>http.response.body</code>. The whole specification is around five pages.</p>
+
+    <p>Starlette is a few thousand lines on top of that contract — routing, body parsing, middleware, the request and response objects you actually program against. FastAPI is a few thousand more on top of Starlette: dependency injection, Pydantic validation, OpenAPI generation. Eventually, both of them hand you exactly the three-argument callable that uvicorn invokes. The protocol is dict-passing all the way down. There are no base classes to inherit, no metaclasses. A framework is just a different opinion about what to do with <code>scope</code>, <code>receive</code>, and <code>send</code>.</p>
+
+    <div class="callout">
+      <span class="callout__label">From Go</span>
+      <p>The analogue is <code>http.Handler</code>: a single interface with one method, <code>ServeHTTP(w, r)</code>. Everything in net/http and every Go web framework reduces to that signature. ASGI is the same idea, async, and dict-shaped rather than struct-shaped. Frameworks compete on ergonomics above a tiny contract.</p>
+    </div>
+
+    <h2 id="s2"><span class="num">§2</span>What uvicorn does between the socket and your code</h2>
+
+    <p>Above the loop and below ASGI is uvicorn, and its job is to turn TCP bytes into the events the protocol describes. The mechanism is unromantic, which is the point.</p>
+
+    <p>At startup, uvicorn opens a listening socket and registers it with the asyncio loop via <code>loop.add_reader(fd, callback)</code>. Each readability event on that fd is a pending <code>accept()</code>. The new connection's fd is added to the selector. As bytes arrive, h11 — or httptools, the C parser, when it is enabled — parses them incrementally into HTTP messages. When request headers are complete, uvicorn assembles a <code>scope</code> dict, builds <code>receive</code> and <code>send</code> callables bound to this connection, and does this:</p>
+
+<pre class="code-block">loop.<span class="fn">create_task</span>(<span class="fn">app</span>(scope, receive, send))</pre>
+
+    <p>That Task lives until your handler returns. While it is parked on a database query, the loop services every other connection's Task. One thread, ten thousand fds, ten thousand small Task objects — the multiplexer from Part 2 §1 underneath, doing its job.</p>
+
+    <p>The useful mental model is one-to-one: one TCP connection is one fd, one parser, one Task. Memory cost scales with active connections, not with maximum theoretical concurrency. Ten thousand idle keep-alive sockets is on the order of tens of megabytes total — most of which is kernel-side socket buffers, not Python objects. The reason async exists, in one line.</p>
+
+    <div class="pullquote">
+      One TCP connection is one fd is one Task. Above that, every layer is an opinion about what to do with three messages.
+    </div>
+
+    <h2 id="s3"><span class="num">§3</span>Sync handlers, and the thread pool you didn't ask for</h2>
+
+    <p>FastAPI lets you write handlers as either <code>async def</code> or <code>def</code>. The convenience hides a switch. Starlette inspects the function when you register the route. If it is <code>async def</code>, the framework awaits it directly — the handler runs on the loop. If it is <code>def</code>, the framework wraps the call in <code>anyio.to_thread.run_sync</code> — the handler runs in a thread pool, and your async code awaits the Future the threadpool produces.</p>
+
+    <p>That is the FastAPI sync-route mechanism. It is not magic. It is a <code>to_thread.run_sync</code>.</p>
+
+<pre class="code-block"><span class="com"># Starlette/_utils.py, paraphrased</span>
+<span class="kw">if</span> asyncio.<span class="fn">iscoroutinefunction</span>(handler):
+    response = <span class="kw">await</span> <span class="fn">handler</span>(request)
+<span class="kw">else</span>:
+    response = <span class="kw">await</span> anyio.to_thread.<span class="fn">run_sync</span>(handler, request)</pre>
+    <p class="code-caption">One branch in route dispatch. The whole sync-handler story.</p>
+
+    <p>The pool is bounded. In current anyio the default cap is forty threads — <code>anyio.to_thread.current_default_thread_limiter().total_tokens</code>, raisable, but forty is what you get out of the box. Forty-one concurrent sync handlers and the forty-second waits on the limiter's semaphore. While it waits, the request makes no progress at all. And the forty threads that are running pay the GIL tax from Part 1: only one Python interpreter executes at a time, and they take turns at the bytecode-count boundary every five milliseconds.</p>
+
+    <p>The right choice is not aesthetic; it is dictated by your libraries. asyncpg, httpx, aioredis are async-native — write <code>async def</code>, stay on the loop. psycopg2, requests, hashlib, pandas are sync-only — write <code>def</code> and accept that you have forty slots. The bad outcomes are the mixes: a <code>def</code> handler that ends up awaiting nothing useful occupies a thread for no reason, and an <code>async def</code> handler that calls a blocking C library freezes every other request on the loop, which is the cooperative trap from Part 2 §6 wearing a different hat.</p>
+
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table class="data">
+          <thead>
+            <tr>
+              <th>handler</th>
+              <th>where it runs</th>
+              <th>concurrency cap</th>
+              <th>fails when</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>async def, async-only I/O</td>
+              <td>event loop</td>
+              <td>~10k (memory)</td>
+              <td>any sync blocking call inside</td>
+            </tr>
+            <tr>
+              <td>def, sync libraries</td>
+              <td>anyio thread pool</td>
+              <td>40 (default)</td>
+              <td>more than 40 in flight</td>
+            </tr>
+            <tr>
+              <td>async def, sync blocking call</td>
+              <td>event loop, frozen</td>
+              <td>1, effectively</td>
+              <td>immediately, but quietly</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="callout callout--trap">
+      <span class="callout__label">Trap</span>
+      <p>The worst row is the last. An <code>async def</code> handler that calls <code>requests.get(...)</code> or <code>time.sleep(...)</code> looks correct, passes review, runs in tests. Under load it stops the entire server every time it is called. You discover this in production because p99 latency jumps and p50 doesn't move — Part 2 §6 again. The defence is mechanical: in <code>async def</code> handlers, every blocking-shaped call is either async-native or wrapped in <code>run_in_executor</code>.</p>
+    </div>
+
+    <h2 id="s4"><span class="num">§4</span>The connection pool is a queue</h2>
+
+    <p>Production async handlers usually talk to a database, and the database does not have ten thousand free connections. The pool — asyncpg's is the canonical Python one — is the accommodation: a fixed number of physical connections, lent out to whichever Task needs one next. The internals are smaller than the surface suggests.</p>
+
+<pre class="code-block"><span class="kw">class</span> <span class="ty">Pool</span>:
+    <span class="kw">async def</span> <span class="fn">acquire</span>(self):
+        <span class="kw">if</span> self._available:
+            <span class="kw">return</span> self._available.<span class="fn">popleft</span>()
+        fut = loop.<span class="fn">create_future</span>()
+        self._waiters.<span class="fn">append</span>(fut)
+        <span class="kw">return</span> <span class="kw">await</span> fut
+
+    <span class="kw">def</span> <span class="fn">release</span>(self, conn):
+        <span class="kw">if</span> self._waiters:
+            fut = self._waiters.<span class="fn">popleft</span>()
+            fut.<span class="fn">set_result</span>(conn)        <span class="com"># wake the longest waiter</span>
+        <span class="kw">else</span>:
+            self._available.<span class="fn">append</span>(conn)</pre>
+    <p class="code-caption">asyncpg/pool.py, paraphrased. The waiters list is FIFO. The whole queue is around fifty lines including the rest of the surface.</p>
+
+    <p>Acquire returns immediately if a connection is free; otherwise it parks the Task on a Future and queues it. Release either hands the connection to the longest-waiting Task or returns it to the pool. Producer/consumer over Futures, with fairness. The mechanism is benign; the dynamics under load are what bite.</p>
+
+    <p>Picture a burst — a hundred requests arrive in the same hundred milliseconds, each needing roughly fifty milliseconds of database time, against a pool of <code>max_size=10</code>. The first ten run immediately. The next ninety park on the waiters list. By the time request one hundred reaches Postgres, it has spent around four hundred and fifty milliseconds in the queue alone. Aggregate p50 latency triples, but the loop is unstressed — its stall is negligible — and the database is unstressed because every connection it has is busy, not slow. The bottleneck is inside a Python object that nothing on a typical dashboard reports.</p>
+
+    <div class="diagram">
+      <div class="diagram__title">Diagram · the pool under burst load</div>
+      <p class="diagram__caption">Twelve requests, a pool of ten. The last two are parked in <code>_waiters</code> until a slot opens. Their latency is queue time, then DB time — and queue time is invisible to most dashboards.</p>
+
+      <svg viewBox="0 0 680 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A Gantt-style timeline showing twelve concurrent requests against a pool of ten connections, with two requests waiting in queue until earlier ones release">
+        <!-- left labels -->
+        <g font-family="var(--font-mono)" font-size="10" fill="var(--text-dim)">
+          <text x="20" y="40">req 1</text><text x="20" y="60">req 2</text><text x="20" y="80">req 3</text>
+          <text x="20" y="100">req 4</text><text x="20" y="120">req 5</text><text x="20" y="140">req 6</text>
+          <text x="20" y="160">req 7</text><text x="20" y="180">req 8</text><text x="20" y="200">req 9</text>
+          <text x="20" y="220">req 10</text>
+          <text x="20" y="244" fill="var(--accent)">req 11</text>
+          <text x="20" y="264" fill="var(--accent)">req 12</text>
+        </g>
+
+        <!-- timeline axis -->
+        <line x1="80" y1="290" x2="640" y2="290" class="diag-line"/>
+        <g font-family="var(--font-mono)" font-size="10" fill="var(--text-muted)">
+          <text x="80" y="308">t=0</text>
+          <text x="220" y="308">25 ms</text>
+          <text x="360" y="308">50 ms</text>
+          <text x="500" y="308">75 ms</text>
+          <text x="630" y="308" text-anchor="end">100 ms</text>
+        </g>
+
+        <!-- requests 1..10: DB bars t=0..50 -->
+        <g>
+          <rect x="80" y="32" width="280" height="12" rx="2" fill="var(--teal)" opacity="0.75"/>
+          <rect x="80" y="52" width="280" height="12" rx="2" fill="var(--teal)" opacity="0.75"/>
+          <rect x="80" y="72" width="280" height="12" rx="2" fill="var(--teal)" opacity="0.75"/>
+          <rect x="80" y="92" width="280" height="12" rx="2" fill="var(--teal)" opacity="0.75"/>
+          <rect x="80" y="112" width="280" height="12" rx="2" fill="var(--teal)" opacity="0.75"/>
+          <rect x="80" y="132" width="280" height="12" rx="2" fill="var(--teal)" opacity="0.75"/>
+          <rect x="80" y="152" width="280" height="12" rx="2" fill="var(--teal)" opacity="0.75"/>
+          <rect x="80" y="172" width="280" height="12" rx="2" fill="var(--teal)" opacity="0.75"/>
+          <rect x="80" y="192" width="280" height="12" rx="2" fill="var(--teal)" opacity="0.75"/>
+          <rect x="80" y="212" width="280" height="12" rx="2" fill="var(--teal)" opacity="0.75"/>
+        </g>
+
+        <!-- req 11: waits 0..50, DB 50..100 -->
+        <rect x="80" y="236" width="280" height="12" rx="2" fill="var(--accent-dim)" stroke="var(--accent)" stroke-width="1" stroke-dasharray="2 2"/>
+        <rect x="360" y="236" width="280" height="12" rx="2" fill="var(--accent)" opacity="0.85"/>
+
+        <!-- req 12: waits 0..50, DB 50..100 -->
+        <rect x="80" y="256" width="280" height="12" rx="2" fill="var(--accent-dim)" stroke="var(--accent)" stroke-width="1" stroke-dasharray="2 2"/>
+        <rect x="360" y="256" width="280" height="12" rx="2" fill="var(--accent)" opacity="0.85"/>
+
+        <!-- legend -->
+        <g font-family="var(--font-mono)" font-size="10">
+          <rect x="80" y="335" width="14" height="8" fill="var(--teal)" opacity="0.75"/>
+          <text x="100" y="343" fill="var(--text-dim)">holding a connection (DB time)</text>
+          <rect x="290" y="335" width="14" height="8" fill="var(--accent-dim)" stroke="var(--accent)" stroke-dasharray="2 2"/>
+          <text x="310" y="343" fill="var(--text-dim)">parked in _waiters (queue time)</text>
+          <rect x="490" y="335" width="14" height="8" fill="var(--accent)" opacity="0.85"/>
+          <text x="510" y="343" fill="var(--text-dim)">finally running</text>
+        </g>
+      </svg>
+    </div>
+
+    <p>The first instinct is to raise <code>max_size</code>. Sometimes this is right. Often it is not. Postgres charges per connection — each backend is a forked process holding around ten megabytes of resident memory plus its shared-buffer share. A hundred application replicas each carrying twenty connections is two thousand Postgres backends, and at that scale Postgres itself starts to suffer. The classical fix is PgBouncer in transaction mode, which sits between the application and the database and multiplexes many client connections onto few server connections; its own dynamics deserve a separate post. The practical lesson here is that pool sizing is a coupling between two queues — yours and the database's — and the right answer is rarely the largest one.</p>
+
+    <h2 id="s5"><span class="num">§5</span>The blocking that hides in libraries</h2>
+
+    <p>Three classes of accident catch otherwise careful code. They are worth naming together because they share a detector and a fix.</p>
+
+    <p>The first is DNS resolution. <code>socket.getaddrinfo</code> is a libc call that does not yield to the event loop; on most platforms it does not release the GIL either. asyncio is aware of this and routes its own name lookups through <code>loop.getaddrinfo</code>, which punts the call to the default thread-pool executor. asyncpg and httpx both go through that path. The trap is <code>requests</code>, which uses urllib3, which calls <code>getaddrinfo</code> directly on whatever thread invoked it. A single <code>requests.get</code> inside an <code>async def</code> handler stalls the loop for the duration of the DNS lookup — usually low single-digit milliseconds, occasionally seconds when your resolver is unhappy.</p>
+
+    <p>The second is parsing or serialising large payloads. <code>json.loads</code> on a fifty-megabyte body is around two hundred milliseconds of pure-Python CPU, and it does not yield in the middle. <code>orjson</code> is faster but still atomic. If your handler ingests big bodies, the right shape is to read the body into bytes asynchronously and then punt the parse to a thread.</p>
+
+    <p>The third is regular-expression backtracking. A user-supplied input matched against an unwise pattern can pin a CPU for seconds, and the <code>re</code> module does not yield mid-match. The defence is to design patterns deliberately, prefer anchored variants where possible, and reach for the <code>re2</code> package when your inputs come from outside.</p>
+
+    <p>These three look unrelated. Underneath, they are the same shape: an operation whose running time is proportional to its input, executing on the loop thread, with no <code>await</code> inside. Every such operation can become a loop stall. The detector from Part 2 §6 — measuring how late a periodic timer callback actually fires — catches all of them. The fix is the same as it was there: <code>run_in_executor</code>, or the async-native version of the library.</p>
+
+    <h2 id="s6"><span class="num">§6</span>Shutdown, and the request that doesn't know it's over</h2>
+
+    <p>Eventually the orchestrator decides your pod is done. SIGTERM arrives. Kubernetes gives the process a grace window — thirty seconds by default — and then SIGKILL. A well-behaved server uses the window to drain in-flight work, and the mechanism in uvicorn is a five-step sequence:</p>
+
+    <ol style="margin: 0 0 24px 24px; line-height: 1.8;">
+      <li>A SIGTERM handler sets <code>should_exit = True</code>.</li>
+      <li>The accept loop sees the flag and closes the listening socket. No new connections.</li>
+      <li>uvicorn emits the ASGI <code>lifespan.shutdown</code> event. Starlette runs your registered shutdown handlers — closing the asyncpg pool, flushing logs, draining Kafka producers.</li>
+      <li>uvicorn waits for in-flight request Tasks to finish on their own.</li>
+      <li>If they do not finish within <code>--timeout-graceful-shutdown</code> seconds (default 30), uvicorn calls <code>task.cancel()</code> on each. Cancellation, as in Part 2 §7, is cooperative.</li>
+    </ol>
+
+    <p>The happy case is clean. The failure modes are not exotic.</p>
+
+    <p>A handler in the middle of a slow database query gets cancelled at its next <code>await</code>, which is the query itself. <code>CancelledError</code> propagates up. If the handler catches <code>Exception</code> — the common shape for "log and return 500" — it swallows the cancellation, because <code>CancelledError</code> inherits from <code>BaseException</code> on the language side but the framework's exception handlers do not always know that. The cancellation is lost. The Task keeps running. The shutdown timeline blows past its budget.</p>
+
+    <p>The connection pool, meanwhile, was closed back in step three. A handler still using a connection in step four hits a "pool is closing" error rather than a clean cancellation, and the shape of that error is library-specific and rarely covered by tests. Worse, the application's grace period and the orchestrator's grace period are configured independently. Kubernetes ships with <code>terminationGracePeriodSeconds: 30</code>; many helm charts override it to five. uvicorn's default is thirty. The smaller number wins silently — the larger one never gets a chance.</p>
+
+    <div class="diagram">
+      <div class="diagram__title">Diagram · the shutdown timeline</div>
+      <p class="diagram__caption">SIGTERM at t=0. Socket closes immediately, lifespan shutdown runs, in-flight requests drain — most cleanly, one not. The grey region is where SIGKILL would land if grace expired.</p>
+
+      <svg viewBox="0 0 680 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A timeline showing SIGTERM at time zero, listening socket close, lifespan shutdown, four in-flight requests finishing at various times, with one being cancelled near the end of the grace period">
+        <defs>
+          <marker id="arrSd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" fill-opacity="0.6"/>
+          </marker>
+        </defs>
+
+        <!-- top: events -->
+        <line x1="80" y1="40" x2="640" y2="40" class="diag-line"/>
+        <!-- t=0 SIGTERM -->
+        <line x1="80" y1="30" x2="80" y2="50" stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="80" y="22" text-anchor="middle" class="diag-text" fill="var(--accent)" font-weight="600">SIGTERM</text>
+        <!-- socket close, near 0 -->
+        <line x1="105" y1="32" x2="105" y2="48" stroke="var(--text-dim)" stroke-width="1"/>
+        <text x="105" y="62" text-anchor="middle" class="diag-text diag-text--dim">socket close</text>
+        <!-- lifespan shutdown -->
+        <line x1="160" y1="30" x2="160" y2="50" stroke="var(--teal)" stroke-width="1.4"/>
+        <text x="160" y="22" text-anchor="middle" class="diag-text" fill="var(--teal)" font-weight="600">lifespan.shutdown</text>
+        <!-- 30s grace marker -->
+        <line x1="600" y1="30" x2="600" y2="50" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="3 2"/>
+        <text x="600" y="22" text-anchor="middle" class="diag-text" fill="var(--accent)" font-weight="600">SIGKILL (if needed)</text>
+
+        <!-- grace shaded -->
+        <rect x="80" y="35" width="520" height="10" fill="var(--accent-dim)" opacity="0.4"/>
+        <text x="340" y="80" text-anchor="middle" class="diag-text diag-text--dim">30-second grace period</text>
+
+        <!-- requests -->
+        <g font-family="var(--font-mono)" font-size="10" fill="var(--text-dim)">
+          <text x="20" y="130">req A</text>
+          <text x="20" y="160">req B</text>
+          <text x="20" y="190">req C</text>
+          <text x="20" y="220" fill="var(--accent)">req D</text>
+        </g>
+
+        <!-- req A: short, finishes early -->
+        <rect x="80" y="122" width="60" height="12" rx="2" fill="var(--teal)" opacity="0.75"/>
+        <text x="148" y="132" class="diag-text diag-text--dim" font-size="10">done</text>
+
+        <!-- req B: medium -->
+        <rect x="80" y="152" width="180" height="12" rx="2" fill="var(--teal)" opacity="0.75"/>
+        <text x="268" y="162" class="diag-text diag-text--dim" font-size="10">done</text>
+
+        <!-- req C: longer, still ok -->
+        <rect x="80" y="182" width="380" height="12" rx="2" fill="var(--teal)" opacity="0.75"/>
+        <text x="468" y="192" class="diag-text diag-text--dim" font-size="10">done</text>
+
+        <!-- req D: very long, caught by cancel -->
+        <rect x="80" y="212" width="500" height="12" rx="2" fill="var(--gold)" opacity="0.65"/>
+        <line x1="580" y1="208" x2="580" y2="228" stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="580" y="246" text-anchor="middle" class="diag-text" fill="var(--accent)" font-size="10">cancel()</text>
+        <rect x="580" y="212" width="20" height="12" rx="2" fill="var(--accent)" opacity="0.85"/>
+
+        <!-- axis -->
+        <line x1="80" y1="270" x2="640" y2="270" class="diag-line"/>
+        <g font-family="var(--font-mono)" font-size="10" fill="var(--text-muted)">
+          <text x="80" y="288">t=0</text>
+          <text x="220" y="288">8 s</text>
+          <text x="360" y="288">15 s</text>
+          <text x="500" y="288">22 s</text>
+          <text x="630" y="288" text-anchor="end">30 s</text>
+        </g>
+
+        <text x="340" y="312" text-anchor="middle" class="diag-text diag-text--dim">A handler that catches <tspan font-family="var(--font-mono)">except Exception</tspan> can swallow the cancel and overrun.</text>
+      </svg>
+    </div>
+
+    <p>Practical consequences: align <code>terminationGracePeriodSeconds</code> with uvicorn's <code>--timeout-graceful-shutdown</code>, with the latter slightly smaller so the application — not the orchestrator — controls the shutdown. Audit handlers for <code>except Exception</code> clauses around <code>await</code> points; either re-raise <code>asyncio.CancelledError</code> explicitly or write <code>except Exception</code> as <code>except (Exception, ) - {CancelledError}</code> in spirit. Close pools after handler drainage rather than before, in a finally-style shutdown handler that runs last.</p>
+
+    <h2 id="s7"><span class="num">§7</span>What to watch</h2>
+
+    <p>The metrics that fail this stack are specific, and most aggregate dashboards do not show them. Four numbers, between them, surface everything in this post:</p>
+
+    <ul class="takeaways">
+      <li><strong>Event-loop stall.</strong> Schedule a callback for every ten milliseconds; measure how late it actually fires. Healthy is under two milliseconds p99. Anything in §3, §5, or a misbehaving extension shows up here first.</li>
+      <li><strong>Connection-pool wait time.</strong> Time between <code>pool.acquire()</code> and the connection being returned. Healthy is essentially zero. Pool saturation (§4) shows up here, never in database CPU.</li>
+      <li><strong>Active threads in the anyio pool.</strong> A gauge counting how many threads are currently running sync handlers. Approaching forty means the next sync request is waiting in the limiter.</li>
+      <li><strong>Per-handler request count and duration, split by <code>def</code> versus <code>async def</code>.</strong> They scale differently, fail differently, and aggregating them hides which kind is in trouble.</li>
+    </ul>
+
+    <p>If the only thing on the wall is p50 latency, none of the failure modes in this post are visible until they are already serious. Two of the four — loop stall and pool wait — are five lines of code to instrument and the most valuable five lines you can add.</p>
+
+    <h2 id="s8"><span class="num">§8</span>Things to take with you</h2>
+
+    <ul class="takeaways">
+      <li>ASGI is a three-argument async callable: <code>scope</code>, <code>receive</code>, <code>send</code>. Everything above is opinion; everything below is uvicorn and asyncio.</li>
+      <li><code>def</code> handlers in FastAPI run in a forty-thread anyio pool. <code>async def</code> handlers run on the loop. They are not interchangeable, and the worst mistake is mixing them — a sync blocking call inside an async handler freezes everything.</li>
+      <li>The connection pool is a FIFO queue over Futures. Watch wait time, not connection count. Raising <code>max_size</code> shifts the queue to Postgres rather than removing it.</li>
+      <li>Anything that runs in linear time on input without an <code>await</code> can become a loop stall. The detector from Part 2 §6 catches them all.</li>
+      <li>Graceful shutdown is cooperative — your handlers have to participate. Handlers that swallow <code>CancelledError</code> defeat it silently.</li>
+    </ul>
+
+    <div class="bridge">
+      <div class="bridge__label">End of series · further reading</div>
+      <div class="bridge__title">Where the rabbit hole goes</div>
+      <p>Three posts of mechanism, and the stack is finally small enough to hold in one head. The destinations from here, in rough order of value:</p>
+      <ul>
+        <li>Starlette's source — <code>starlette/middleware/base.py</code> and <code>starlette/routing.py</code>. A few hundred lines each. Trace a request through and the ASGI contract becomes concrete.</li>
+        <li>asyncpg's <code>pool.py</code>. The waiters queue is fifty lines including comments.</li>
+        <li>The ASGI specification at <a href="https://asgi.readthedocs.io">asgi.readthedocs.io</a>. Thirty minutes, no jargon.</li>
+        <li>Nathaniel J. Smith's <em>Notes on Structured Concurrency</em> (2018) — the philosophical underpinning of <code>TaskGroup</code>, and worth the read regardless of language.</li>
+        <li>PEP 703 and the free-threaded Python rollout. When the GIL goes, the calculus for sync handlers changes: there is no longer a reason to prefer async-everything if CPU work can finally parallelise.</li>
+      </ul>
+      <p>None of this stack is exotic in isolation. Each piece fits in a head. The complexity emerges at the joins — which is, in the end, the only place worth looking when something is wrong.</p>
+    </div>
+
+  </section>
+
+</article>
+
+<script>
+  // Theme toggle — respects saved preference, falls back to prefers-color-scheme
+  (function () {
+    const root = document.documentElement;
+    const saved = localStorage.getItem('theme');
+    if (saved) {
+      root.setAttribute('data-theme', saved);
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      root.setAttribute('data-theme', 'dark');
+    }
+    document.querySelectorAll('[data-theme-toggle]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        root.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+      });
+    });
+  })();
+
+  // Reading progress
+  (function () {
+    const bar = document.getElementById('progress');
+    if (!bar) return;
+    let raf = 0;
+    const update = () => {
+      const doc = document.documentElement;
+      const scrolled = doc.scrollTop || document.body.scrollTop;
+      const height = doc.scrollHeight - doc.clientHeight;
+      bar.style.width = height > 0 ? (scrolled / height * 100) + '%' : '0%';
+      raf = 0;
+    };
+    window.addEventListener('scroll', () => {
+      if (!raf) raf = requestAnimationFrame(update);
+    }, { passive: true });
+    update();
+  })();
+</script>
+
+</body>
+</html>

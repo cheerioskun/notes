@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Loop is the Trick — Part 2 of Python Concurrency</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'Crimson Pro', Georgia, serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  }
+
+  html[data-theme="light"] {
+    --bg: #faf6f0;
+    --bg-tint: #f4ece0;
+    --surface: #ffffff;
+    --surface-elevated: #fffdf9;
+    --surface-recessed: #f1e9db;
+    --border: rgba(60, 40, 20, 0.10);
+    --border-bright: rgba(60, 40, 20, 0.20);
+    --text: #2a2018;
+    --text-bright: #1a130c;
+    --text-dim: #6b5840;
+    --text-muted: #8a7660;
+
+    --accent: #b8472a;
+    --accent-dim: rgba(184, 71, 42, 0.10);
+    --accent-bright: #d4583a;
+    --teal: #1e5f5c;
+    --teal-dim: rgba(30, 95, 92, 0.10);
+    --teal-bright: #2a807c;
+    --gold: #b8860b;
+    --gold-dim: rgba(184, 134, 11, 0.10);
+    --rust: #8b3a1f;
+    --sage: #6a7d3c;
+    --sage-dim: rgba(106, 125, 60, 0.10);
+
+    --thread-a: #b8472a;
+    --thread-b: #1e5f5c;
+  }
+
+  html[data-theme="dark"] {
+    --bg: #18120c;
+    --bg-tint: #221a12;
+    --surface: #221a12;
+    --surface-elevated: #2a2018;
+    --surface-recessed: #14100a;
+    --border: rgba(240, 220, 190, 0.10);
+    --border-bright: rgba(240, 220, 190, 0.22);
+    --text: #efe4d2;
+    --text-bright: #fff8e8;
+    --text-dim: #b8a888;
+    --text-muted: #948060;
+
+    --accent: #e87a5b;
+    --accent-dim: rgba(232, 122, 91, 0.14);
+    --accent-bright: #f29478;
+    --teal: #4dbab5;
+    --teal-dim: rgba(77, 186, 181, 0.14);
+    --teal-bright: #6dd0cb;
+    --gold: #e0b048;
+    --gold-dim: rgba(224, 176, 72, 0.14);
+    --rust: #c66f4a;
+    --sage: #a8b85e;
+    --sage-dim: rgba(168, 184, 94, 0.14);
+
+    --thread-a: #e87a5b;
+    --thread-b: #4dbab5;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse at 12% 0%, var(--teal-dim) 0%, transparent 45%),
+      radial-gradient(ellipse at 88% 12%, var(--accent-dim) 0%, transparent 50%);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 19px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    overflow-wrap: break-word;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+  body * { min-width: 0; }
+
+  /* ============ READING PROGRESS ============ */
+  .progress {
+    position: fixed;
+    top: 0; left: 0;
+    width: 0%;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--teal));
+    z-index: 100;
+    transition: width 0.08s linear;
+  }
+
+  /* ============ HEADER STRIP ============ */
+  .site-header {
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  .site-header__title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .theme-toggle {
+    background: none;
+    border: 1px solid var(--border-bright);
+    color: var(--text-dim);
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+  }
+  .theme-toggle:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .page { max-width: 720px; margin: 0 auto; padding: 60px 32px 120px; }
+
+  /* ============ TOC ============ */
+  .toc {
+    background: var(--surface-recessed);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 22px 28px;
+    margin-bottom: 56px;
+  }
+  .toc__label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 14px;
+  }
+  .toc ol {
+    list-style: none;
+    counter-reset: toc;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 28px;
+  }
+  @media (max-width: 560px) {
+    .toc ol { grid-template-columns: 1fr; }
+  }
+  .toc li {
+    counter-increment: toc;
+    line-height: 1.4;
+  }
+  .toc a {
+    color: var(--text-dim);
+    text-decoration: none;
+    font-size: 15px;
+    display: flex;
+    gap: 12px;
+    align-items: baseline;
+    padding: 4px 0;
+    transition: color 0.15s;
+  }
+  .toc a:hover { color: var(--accent); }
+  .toc a::before {
+    content: counter(toc, decimal-leading-zero);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent);
+    font-weight: 500;
+    min-width: 24px;
+  }
+
+  /* HERO */
+  .hero { margin-bottom: 40px; padding-bottom: 36px; border-bottom: 1px solid var(--border); }
+  .hero__series {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--accent);
+    margin-bottom: 20px;
+  }
+  .hero__series::before {
+    content: ''; display: inline-block; width: 24px; height: 1px;
+    background: var(--accent); vertical-align: middle; margin-right: 12px;
+    transform: translateY(-2px);
+  }
+  .hero__progress {
+    display: inline-block; margin-left: 14px; font-family: var(--font-mono);
+    font-size: 11px; letter-spacing: 4px; color: var(--text-muted);
+  }
+  .hero__progress .on { color: var(--accent); }
+  .hero__title {
+    font-family: var(--font-body); font-weight: 600;
+    font-size: clamp(36px, 5.5vw, 54px); line-height: 1.05;
+    letter-spacing: -1.2px; color: var(--text-bright);
+    margin-bottom: 18px; text-wrap: balance;
+  }
+  .hero__subtitle {
+    font-style: italic; font-size: 22px; line-height: 1.4;
+    color: var(--text-dim); max-width: 600px; margin-bottom: 28px;
+  }
+  .hero__meta {
+    font-family: var(--font-mono); font-size: 12px; color: var(--text-muted);
+    display: flex; gap: 20px; flex-wrap: wrap;
+  }
+  .hero__meta span { display: inline-flex; align-items: center; gap: 6px; }
+  .hero__meta span::before {
+    content: ''; width: 4px; height: 4px;
+    background: var(--text-muted); border-radius: 50%;
+  }
+  .hero__meta span:first-child::before { display: none; }
+
+  /* PROSE */
+  .prose p { margin-bottom: 1.3em; text-wrap: pretty; }
+  .prose strong { color: var(--text-bright); font-weight: 600; }
+  .prose em { font-style: italic; color: var(--text-bright); }
+  .prose a {
+    color: var(--accent); text-decoration: underline;
+    text-decoration-thickness: 1px; text-underline-offset: 3px;
+  }
+  .prose code {
+    font-family: var(--font-mono); font-size: 0.82em;
+    background: var(--accent-dim); color: var(--accent);
+    padding: 1px 6px; border-radius: 3px; font-weight: 500;
+  }
+
+  .lead {
+    font-size: 22px; line-height: 1.55;
+    color: var(--text-bright); margin-bottom: 36px;
+  }
+
+  /* HEADINGS */
+  h2 {
+    font-family: var(--font-body); font-weight: 600; font-size: 32px;
+    line-height: 1.15; letter-spacing: -0.6px; color: var(--text-bright);
+    margin-top: 64px; margin-bottom: 8px; text-wrap: balance;
+    scroll-margin-top: 24px;
+  }
+  h2 .num {
+    font-family: var(--font-mono); font-size: 13px; font-weight: 500;
+    color: var(--accent); letter-spacing: 1px; display: block; margin-bottom: 6px;
+  }
+  h3 {
+    font-family: var(--font-body); font-weight: 600; font-size: 22px;
+    line-height: 1.3; color: var(--text-bright);
+    margin-top: 36px; margin-bottom: 12px;
+  }
+
+  /* CODE */
+  .code-block {
+    font-family: var(--font-mono); font-size: 13px; line-height: 1.65;
+    background: var(--surface-recessed); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 16px 20px; margin: 24px 0;
+    overflow-x: auto; white-space: pre;
+    box-shadow: inset 0 1px 3px rgba(60, 40, 20, 0.04);
+  }
+  .code-block .kw  { color: var(--accent); font-weight: 500; }
+  .code-block .com { color: var(--text-muted); font-style: italic; }
+  .code-block .str { color: var(--sage); }
+  .code-block .num { color: var(--gold); }
+  .code-block .fn  { color: var(--teal); }
+  .code-block .ty  { color: var(--rust); }
+  .code-block .hl  { background: var(--accent-dim); padding: 0 4px; border-radius: 2px; }
+
+  .code-caption {
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+    margin-top: -16px; margin-bottom: 28px; padding-left: 4px; letter-spacing: 0.3px;
+  }
+
+  /* PULL QUOTE */
+  .pullquote {
+    margin: 48px 0; padding: 0 0 0 28px;
+    border-left: 3px solid var(--accent);
+    font-style: italic; font-size: 24px; line-height: 1.4;
+    color: var(--text-bright);
+  }
+
+  /* CALLOUTS */
+  .callout {
+    margin: 32px 0; padding: 18px 22px;
+    background: var(--teal-dim); border-left: 3px solid var(--teal);
+    border-radius: 0 8px 8px 0;
+    font-size: 17px; line-height: 1.55;
+  }
+  .callout--warn { background: var(--gold-dim); border-left-color: var(--gold); }
+  .callout--trap { background: var(--accent-dim); border-left-color: var(--accent); }
+  .callout__label {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    letter-spacing: 1.8px; text-transform: uppercase;
+    color: var(--teal); margin-bottom: 6px; display: block;
+  }
+  .callout--warn .callout__label { color: var(--gold); }
+  .callout--trap .callout__label { color: var(--accent); }
+  .callout p { margin-bottom: 0; }
+  .callout p + p { margin-top: 10px; }
+  .callout code {
+    font-family: var(--font-mono); font-size: 0.82em;
+    background: rgba(0,0,0,0.04); color: inherit;
+    padding: 1px 5px; border-radius: 3px;
+  }
+
+  /* DIAGRAM */
+  .diagram {
+    margin: 40px 0; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 28px 24px; box-shadow: 0 1px 3px rgba(60, 40, 20, 0.04);
+  }
+  .diagram__title {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 4px;
+  }
+  .diagram__caption {
+    font-family: var(--font-body); font-size: 15px; font-style: italic;
+    color: var(--text-dim); margin-bottom: 22px; max-width: 580px;
+  }
+  .diagram svg { display: block; width: 100%; height: auto; max-width: 100%; }
+
+  /* TABLE */
+  .table-wrap {
+    margin: 32px 0; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  }
+  .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.data {
+    width: 100%; border-collapse: collapse;
+    font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  }
+  table.data th {
+    background: var(--surface-recessed);
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1.4px; color: var(--text-dim);
+    text-align: left; padding: 12px 16px;
+    border-bottom: 2px solid var(--border-bright); white-space: nowrap;
+  }
+  table.data td {
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+    vertical-align: top; color: var(--text);
+  }
+  table.data tr:last-child td { border-bottom: none; }
+  table.data tr:nth-child(even) td { background: var(--accent-dim); }
+  table.data td:first-child {
+    font-family: var(--font-mono); font-size: 13px;
+    color: var(--accent); font-weight: 500; white-space: nowrap;
+  }
+
+  /* TAKEAWAY LIST */
+  .takeaways {
+    margin: 32px 0; padding: 24px 28px;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border); border-radius: 10px;
+    list-style: none;
+  }
+  .takeaways li {
+    font-size: 18px; padding: 10px 0;
+    border-bottom: 1px dashed var(--border);
+    display: flex; gap: 14px;
+  }
+  .takeaways li:last-child { border-bottom: none; }
+  .takeaways li::before {
+    content: '·'; color: var(--accent); font-weight: 600;
+    font-family: var(--font-mono); flex-shrink: 0;
+  }
+
+  /* BRIDGE */
+  .bridge {
+    margin-top: 80px; padding: 36px 32px;
+    background: var(--surface-elevated); border: 1px solid var(--border);
+    border-radius: 12px; border-left: 4px solid var(--accent);
+  }
+  .bridge__label {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 12px;
+  }
+  .bridge__title {
+    font-weight: 600; font-size: 24px;
+    color: var(--text-bright); margin-bottom: 10px;
+  }
+  .bridge p { color: var(--text-dim); margin-bottom: 0; font-size: 17px; }
+
+  /* ANIMATION */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .hero, .toc, .section { animation: fadeUp 0.5s ease-out both; }
+  .toc { animation-delay: 0.05s; }
+  .section { animation-delay: 0.10s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .page { padding: 36px 20px 80px; }
+    .site-header { padding: 14px 20px; }
+    body { font-size: 17px; }
+    .lead { font-size: 19px; }
+    h2 { font-size: 26px; margin-top: 48px; }
+    h3 { font-size: 19px; }
+    .pullquote { font-size: 20px; padding-left: 18px; }
+    .code-block { font-size: 12px; padding: 14px 16px; }
+    .diagram { padding: 20px 14px; }
+  }
+
+  /* SVG */
+  .diag-text { font-family: var(--font-mono); font-size: 11px; fill: var(--text); }
+  .diag-text--dim { fill: var(--text-dim); }
+  .diag-text--label { font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+  .diag-line { stroke: var(--border-bright); stroke-width: 1.2; fill: none; }
+  .diag-arrow { stroke: var(--text-dim); stroke-width: 1.2; fill: none; }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+
+<header class="site-header">
+  <span class="site-header__title">Python Concurrency Decoded</span>
+  <button class="theme-toggle" data-theme-toggle aria-label="Toggle theme">◐ Theme</button>
+</header>
+
+<article class="page prose">
+
+  <header class="hero">
+    <div class="hero__series">
+      Python Concurrency · Part 2 of 3
+      <span class="hero__progress"><span class="on">●</span><span class="on">●</span>○</span>
+    </div>
+    <h1 class="hero__title">The Loop is the Trick</h1>
+    <p class="hero__subtitle">asyncio is a hand-rolled scheduler over one syscall and one language feature. The rest is mechanism — and the mechanism is roughly fifty lines.</p>
+    <div class="hero__meta">
+      <span>~16 min read</span>
+      <span>Python 3.11+</span>
+      <span>Assumes: Part 1, epoll, generators</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <div class="toc__label">In this part</div>
+    <ol>
+      <li><a href="#s1">One syscall holds it up</a></li>
+      <li><a href="#s2">A coroutine is a resumable function</a></li>
+      <li><a href="#s3">What <code>await</code> actually does</a></li>
+      <li><a href="#s4">The event loop, dissected</a></li>
+      <li><a href="#s5">Future, Coroutine, Task</a></li>
+      <li><a href="#s6">The cooperative trap, with numbers</a></li>
+      <li><a href="#s7">Cancellation</a></li>
+      <li><a href="#s8">TaskGroup — structured concurrency</a></li>
+      <li><a href="#s9">A short list to take with you</a></li>
+    </ol>
+  </nav>
+
+  <section class="section">
+
+    <p class="lead">In Part 1 we established that the GIL releases on I/O syscalls, which means CPython threads can already do I/O concurrency. So why does asyncio exist? Take ten thousand idle HTTP connections. With threads, that is ten thousand kernel-scheduled stacks; even at lazy-allocated 8&nbsp;MB each you are courting tens of gigabytes of virtual address space and a context-switch tax that scales with how often your threads wake up to do nothing. With asyncio, the same ten thousand connections are ten thousand small Python objects sitting on a single OS thread, and the kernel is asked exactly one question: "of these file descriptors, which are ready?"</p>
+
+    <p>That is the trade. asyncio swaps preemption for memory, and kernel scheduling for a tighter inner loop. Everything else in this post is mechanism — the specific shape of the scheduler Python ships in <code>Lib/asyncio/</code>. Once you can see the mechanism, the famous gotchas stop being mystical. They become predictable consequences of the design.</p>
+
+    <p>So we'll take a tour: down to the syscall, up through the coroutine, into the event loop, and out the other side with a clear map of what blocks, what doesn't, and why. By the end you should be able to read <code>Lib/asyncio/base_events.py</code> and recognise every moving part.</p>
+
+    <h2 id="s1"><span class="num">§1</span>One syscall holds it up</h2>
+
+    <p>The entire edifice rests on a single Linux primitive: <code>epoll_wait</code>. (On macOS and BSD it's <code>kqueue</code>; on Windows, I/O completion ports. Python's <code>selectors</code> module picks the best one for the platform.) The shape of the syscall is what matters. You register a set of file descriptors with the kernel, and then you ask: <em>of all these, which are readable, writable, or errored right now?</em> The kernel answers in time proportional to the number of <em>ready</em> fds, not the number registered. It maintains a ready list internally as events arrive; <code>epoll_wait</code> just drains it.</p>
+
+    <p>This is why one Python thread can shepherd ten thousand sockets. The work the thread does is proportional to the events that actually happened, not the connections that exist. An idle asyncio server, under <code>strace</code>, looks exactly like this:</p>
+
+<pre class="code-block"><span class="com"># strace -p &lt;pid&gt; on an idle asyncio HTTP server</span>
+epoll_wait(<span class="num">3</span>, [], <span class="num">64</span>, -<span class="num">1</span>) = <span class="num">0</span>   <span class="com"># blocked, no events</span>
+<span class="com"># ... later, a connection arrives ...</span>
+epoll_wait(<span class="num">3</span>, [{EPOLLIN, fd=<span class="num">7</span>}], <span class="num">64</span>, -<span class="num">1</span>) = <span class="num">1</span></pre>
+    <p class="code-caption">Simplified strace output. The point: a whole asyncio server, idling, is one process parked in one syscall.</p>
+
+    <div class="diagram">
+      <div class="diagram__title">Diagram A · the one syscall</div>
+      <p class="diagram__caption">The kernel watches N file descriptors and returns only the ones with pending events. The scheduler's per-iteration work is O(ready), not O(N).</p>
+
+      <svg viewBox="0 0 680 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagram showing N file descriptors being filtered by the kernel into a small ready list">
+        <defs>
+          <marker id="arrA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" fill-opacity="0.55"/>
+          </marker>
+        </defs>
+
+        <!-- left: N fds -->
+        <text x="20" y="28" class="diag-text diag-text--label" fill="var(--text-dim)">registered fds (N)</text>
+        <g font-family="var(--font-mono)" font-size="11" fill="var(--text)">
+          <rect x="20" y="46" width="120" height="22" rx="3" fill="var(--surface-recessed)" stroke="var(--border-bright)"/><text x="32" y="61">fd 7   socket</text>
+          <rect x="20" y="74" width="120" height="22" rx="3" fill="var(--surface-recessed)" stroke="var(--border-bright)"/><text x="32" y="89">fd 8   socket</text>
+          <rect x="20" y="102" width="120" height="22" rx="3" fill="var(--surface-recessed)" stroke="var(--border-bright)"/><text x="32" y="117">fd 9   socket</text>
+          <rect x="20" y="130" width="120" height="22" rx="3" fill="var(--surface-recessed)" stroke="var(--border-bright)"/><text x="32" y="145">fd 10  pipe</text>
+          <rect x="20" y="158" width="120" height="22" rx="3" fill="var(--surface-recessed)" stroke="var(--border-bright)"/><text x="32" y="173">fd 11  socket</text>
+          <text x="80" y="200" text-anchor="middle" fill="var(--text-muted)">... 9,995 more</text>
+        </g>
+
+        <!-- middle: kernel -->
+        <rect x="245" y="80" width="180" height="80" rx="6" fill="var(--teal-dim)" stroke="var(--teal)" stroke-width="1.2"/>
+        <text x="335" y="108" text-anchor="middle" class="diag-text" fill="var(--teal)" font-weight="600">kernel</text>
+        <text x="335" y="128" text-anchor="middle" class="diag-text diag-text--dim">epoll_wait</text>
+        <text x="335" y="146" text-anchor="middle" class="diag-text diag-text--dim">O(ready)</text>
+
+        <!-- arrows in -->
+        <path d="M 140 57 L 245 100" class="diag-arrow" marker-end="url(#arrA)" opacity="0.6"/>
+        <path d="M 140 85 L 245 110" class="diag-arrow" marker-end="url(#arrA)" opacity="0.6"/>
+        <path d="M 140 113 L 245 120" class="diag-arrow" marker-end="url(#arrA)" opacity="0.6"/>
+        <path d="M 140 141 L 245 132" class="diag-arrow" marker-end="url(#arrA)" opacity="0.6"/>
+        <path d="M 140 169 L 245 142" class="diag-arrow" marker-end="url(#arrA)" opacity="0.6"/>
+
+        <!-- right: ready -->
+        <text x="660" y="28" text-anchor="end" class="diag-text diag-text--label" fill="var(--accent)">ready list</text>
+        <g font-family="var(--font-mono)" font-size="11" fill="var(--text)">
+          <rect x="500" y="80" width="160" height="22" rx="3" fill="var(--accent-dim)" stroke="var(--accent)"/><text x="512" y="95">fd 7   EPOLLIN</text>
+          <rect x="500" y="108" width="160" height="22" rx="3" fill="var(--accent-dim)" stroke="var(--accent)"/><text x="512" y="123">fd 11  EPOLLIN</text>
+        </g>
+
+        <!-- arrow out -->
+        <path d="M 425 115 L 500 91" class="diag-arrow" marker-end="url(#arrA)"/>
+        <path d="M 425 125 L 500 119" class="diag-arrow" marker-end="url(#arrA)"/>
+
+        <text x="582" y="148" text-anchor="middle" class="diag-text diag-text--dim">just the 2 that fired</text>
+      </svg>
+    </div>
+
+    <p>If you have written Go, you have already paid for this primitive — you just never saw it. Go's runtime <em>netpoller</em> is epoll/kqueue under the hood, hidden behind goroutines that look like they do blocking I/O. asyncio is the same machinery without the curtain. The loop is in your code; you can read it.</p>
+
+    <h2 id="s2"><span class="num">§2</span>A coroutine is a resumable function</h2>
+
+    <p>The other primitive asyncio needs is a function that can be paused mid-execution and resumed later, with its local variables intact. CPython has had this since 2001, in the form of generators. <code>async def</code> is a thin syntactic skin over the same protocol.</p>
+
+    <p>Watch carefully:</p>
+
+<pre class="code-block">&gt;&gt;&gt; <span class="kw">async def</span> <span class="fn">f</span>():
+...     <span class="kw">return</span> <span class="num">42</span>
+...
+&gt;&gt;&gt; coro = f()
+&gt;&gt;&gt; coro
+&lt;coroutine object f at <span class="num">0x10...</span>&gt;
+&gt;&gt;&gt; coro.send(<span class="kw">None</span>)
+<span class="ty">Traceback</span> (most recent call last):
+  ...
+<span class="ty">StopIteration</span>: <span class="num">42</span></pre>
+    <p class="code-caption">Calling an async function does not execute it. It returns a coroutine object — a paused frame waiting to be driven.</p>
+
+    <p>Two things to absorb. First, <code>f()</code> does not run the body. It allocates a coroutine object — a heap-allocated frame containing the function's bytecode pointer, locals, and value stack. Second, the way you "run" it is to call <code>.send()</code>, the same method generators have had for two decades. When the coroutine returns, it does so by raising <code>StopIteration</code> with the value attached. This is not an error; it is the generator protocol. CPython has used exceptions for control flow here since before it was fashionable.</p>
+
+    <p>Now look at what <code>await</code> compiles to:</p>
+
+<pre class="code-block">&gt;&gt;&gt; <span class="kw">import</span> dis
+&gt;&gt;&gt; <span class="kw">async def</span> <span class="fn">f</span>():
+...     <span class="kw">await</span> g()
+...
+&gt;&gt;&gt; dis.dis(f)
+   RESUME       <span class="num">0</span>
+   LOAD_GLOBAL  g
+   CALL         <span class="num">0</span>
+   <span class="hl">GET_AWAITABLE  0</span>
+   LOAD_CONST   None
+   <span class="hl">SEND         3</span>      <span class="com"># &lt;-- the suspension point</span>
+   YIELD_VALUE  <span class="num">2</span>
+   RESUME       <span class="num">3</span>
+   ...</pre>
+    <p class="code-caption">SEND yields the awaitable up to whoever called .send() on us. The frame is parked. Locals stay on the heap.</p>
+
+    <p>A coroutine, then, is two things: a chunk of bytecode, and a heap-allocated frame that knows where in that bytecode it is. The frame is a few hundred bytes. Ten thousand parked coroutines is a few megabytes. Ten thousand parked OS threads is gigabytes of address space the kernel must track. That gap is the whole game.</p>
+
+    <div class="callout">
+      <span class="callout__label">From Go</span>
+      <p>A goroutine is a real (growable) stack the runtime can park — starts ~2&nbsp;KB and grows. A coroutine is a state-machine struct on the heap with no stack at all. Same observable behaviour (park, resume), very different memory shape. Goroutines feel like cheap threads. Coroutines feel like fancy callbacks. Both descriptions are correct.</p>
+    </div>
+
+    <h2 id="s3"><span class="num">§3</span>What <code>await</code> actually does</h2>
+
+    <p>Most tutorials say "<code>await</code> waits for the result." This is a lie of convenience. <code>await x</code> does not wait. It yields <code>x</code> up the call chain — all the way out, through every <code>await</code> frame between here and the function that originally called <code>.send()</code>. That function is the <em>driver</em>. In production, the driver is the event loop. But there is nothing magical about it; you can write one yourself in ten lines.</p>
+
+<pre class="code-block"><span class="kw">class</span> <span class="ty">Awaitable</span>:
+    <span class="kw">def</span> <span class="fn">__await__</span>(self):
+        <span class="kw">yield</span> self          <span class="com"># this value travels up to the driver</span>
+        <span class="kw">return</span> <span class="num">42</span>            <span class="com"># this becomes the result of `await`</span>
+
+<span class="kw">async def</span> <span class="fn">child</span>():
+    x = <span class="kw">await</span> <span class="ty">Awaitable</span>()
+    <span class="kw">return</span> x + <span class="num">1</span>
+
+<span class="kw">async def</span> <span class="fn">parent</span>():
+    <span class="kw">return</span> <span class="kw">await</span> child()
+
+<span class="com"># --- the manual driver ---</span>
+coro = parent()
+<span class="kw">while True</span>:
+    <span class="kw">try</span>:
+        yielded = coro.<span class="fn">send</span>(<span class="kw">None</span>)    <span class="com"># run until next yield</span>
+    <span class="kw">except</span> <span class="ty">StopIteration</span> <span class="kw">as</span> e:
+        <span class="fn">print</span>(e.value)              <span class="com"># 43 — we&#39;re done</span>
+        <span class="kw">break</span>
+    <span class="com"># `yielded` is the value Awaitable yielded up the stack.</span>
+    <span class="com"># The real loop inspects it: is it a Future? schedule a callback.</span>
+    <span class="com"># Here we just resume immediately.</span>
+    <span class="fn">print</span>(<span class="str">"got:"</span>, yielded)         <span class="com"># &lt;Awaitable object&gt;</span></pre>
+    <p class="code-caption">A complete asyncio program with no asyncio. The driver is six lines.</p>
+
+    <p>Look at what happened. <code>parent()</code> awaits <code>child()</code> which awaits <code>Awaitable()</code>. When <code>Awaitable.__await__</code> yields <code>self</code>, that value travels through <em>both</em> intermediate frames and lands back at our manual driver — the outermost <code>.send()</code>. The two intermediate coroutines are now parked. Their frames live on the heap. When we call <code>.send(None)</code> a second time, execution resumes inside <code>Awaitable.__await__</code> at the line after <code>yield</code>, runs the <code>return 42</code>, which becomes the value of the <code>await</code> expression in <code>child</code>, which adds one and returns 43, which <code>parent</code> returns, which raises <code>StopIteration(43)</code>.</p>
+
+    <div class="callout callout--trap">
+      <span class="callout__label">The lie tutorials tell</span>
+      <p><strong>"<code>await</code> waits for the result."</strong> It doesn't. <code>await</code> is a yield. The thing that does the waiting is the driver — whoever is at the top calling <code>.send()</code>. The coroutine itself is unconscious during the wait, sitting in memory.</p>
+    </div>
+
+    <p>So what does <code>await asyncio.sleep(1)</code> actually yield? It yields a Future. The driver — the event loop — sees the Future, schedules a callback for one second from now that will resolve it, then moves on to whatever else needs running. When the timer fires, the Future is resolved, which schedules a callback that resumes the coroutine, which gets <code>None</code> as the value of the <code>await</code> expression and continues. There is no <em>waiting</em> happening inside the coroutine. It is dead to the world. The waiting is happening in the loop, and the loop is waiting on <code>epoll_wait</code>.</p>
+
+    <div class="pullquote">
+      The event loop is just <code>coro.send(None)</code> in a <code>while</code> loop, with opinions about what to do with the values it gets back.
+    </div>
+
+    <h2 id="s4"><span class="num">§4</span>The event loop, dissected</h2>
+
+    <p>If you open <code>Lib/asyncio/base_events.py</code> and find the method called <code>_run_once</code>, you are looking at the entire scheduler. It is six steps, around fifty lines of Python. Stripped down, it looks like this:</p>
+
+<pre class="code-block"><span class="kw">def</span> <span class="fn">_run_once</span>(self):
+    <span class="com"># 1. Decide how long to block in the selector.</span>
+    <span class="com">#    - work pending? don't sleep at all.</span>
+    <span class="com">#    - timer pending? sleep until it fires.</span>
+    <span class="com">#    - neither? sleep forever (wake on I/O).</span>
+    <span class="kw">if</span> self._ready:
+        timeout = <span class="num">0</span>
+    <span class="kw">elif</span> self._scheduled:
+        timeout = <span class="fn">max</span>(<span class="num">0</span>, self._scheduled[<span class="num">0</span>]._when - self.<span class="fn">time</span>())
+    <span class="kw">else</span>:
+        timeout = <span class="kw">None</span>
+
+    <span class="com"># 2. The syscall. This is where the thread actually parks.</span>
+    event_list = self._selector.<span class="fn">select</span>(timeout)
+
+    <span class="com"># 3. Translate I/O events into ready callbacks.</span>
+    <span class="kw">for</span> key, mask <span class="kw">in</span> event_list:
+        self._ready.<span class="fn">append</span>(key.data)      <span class="com"># a Handle</span>
+
+    <span class="com"># 4. Promote expired timers to ready.</span>
+    now = self.<span class="fn">time</span>()
+    <span class="kw">while</span> self._scheduled <span class="kw">and</span> self._scheduled[<span class="num">0</span>]._when &lt;= now:
+        handle = heapq.<span class="fn">heappop</span>(self._scheduled)
+        self._ready.<span class="fn">append</span>(handle)
+
+    <span class="com"># 5. Snapshot ready (new ones go to next iteration).</span>
+    ntodo = <span class="fn">len</span>(self._ready)
+
+    <span class="com"># 6. Run each callback. They may schedule more work.</span>
+    <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(ntodo):
+        handle = self._ready.<span class="fn">popleft</span>()
+        handle.<span class="fn">_run</span>()</pre>
+    <p class="code-caption">cpython/Lib/asyncio/base_events.py — _run_once, paraphrased. This is the whole scheduler.</p>
+
+    <p>Two data structures: a deque <code>_ready</code> of callbacks to run right now, and a heap <code>_scheduled</code> of timers ordered by deadline. One organ: the <code>_selector</code>, which is <code>epoll_wait</code> in disguise. Six steps per turn of the loop. That is all asyncio is, at the bottom. Everything else — Tasks, Futures, <code>gather</code>, <code>TaskGroup</code>, transports, protocols — is built on top.</p>
+
+    <div class="diagram">
+      <div class="diagram__title">Diagram B · one turn of the loop</div>
+      <p class="diagram__caption">The six steps of <code>_run_once</code>. The selector is the only place the thread actually blocks. Everything else is in-process bookkeeping.</p>
+
+      <svg viewBox="0 0 680 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagram of one event-loop iteration showing the ready deque, scheduled heap, selector, and six numbered steps">
+        <defs>
+          <marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" fill-opacity="0.6"/>
+          </marker>
+        </defs>
+
+        <!-- _ready deque -->
+        <text x="40" y="30" class="diag-text diag-text--label" fill="var(--accent)">_ready (deque)</text>
+        <rect x="40" y="44" width="240" height="38" rx="4" fill="var(--accent-dim)" stroke="var(--accent)" stroke-width="1.2"/>
+        <g font-family="var(--font-mono)" font-size="11" fill="var(--text)">
+          <rect x="52" y="54" width="44" height="18" rx="2" fill="var(--surface)" stroke="var(--accent)"/><text x="74" y="67" text-anchor="middle">cb₁</text>
+          <rect x="102" y="54" width="44" height="18" rx="2" fill="var(--surface)" stroke="var(--accent)"/><text x="124" y="67" text-anchor="middle">cb₂</text>
+          <rect x="152" y="54" width="44" height="18" rx="2" fill="var(--surface)" stroke="var(--accent)"/><text x="174" y="67" text-anchor="middle">cb₃</text>
+          <text x="230" y="67" fill="var(--text-muted)">FIFO →</text>
+        </g>
+
+        <!-- _scheduled heap -->
+        <text x="400" y="30" class="diag-text diag-text--label" fill="var(--teal)">_scheduled (heap by deadline)</text>
+        <rect x="400" y="44" width="240" height="38" rx="4" fill="var(--teal-dim)" stroke="var(--teal)" stroke-width="1.2"/>
+        <g font-family="var(--font-mono)" font-size="11" fill="var(--text)">
+          <text x="412" y="67">t+0.01s</text>
+          <text x="476" y="67">t+0.4s</text>
+          <text x="536" y="67">t+1.0s</text>
+        </g>
+
+        <!-- selector -->
+        <rect x="200" y="130" width="280" height="62" rx="6" fill="var(--surface-recessed)" stroke="var(--border-bright)" stroke-width="1.4"/>
+        <text x="340" y="156" text-anchor="middle" class="diag-text" fill="var(--text-bright)" font-weight="600">selector.select(timeout)</text>
+        <text x="340" y="176" text-anchor="middle" class="diag-text diag-text--dim">epoll_wait — the only place we sleep</text>
+
+        <!-- step markers down the left -->
+        <g font-family="var(--font-mono)" font-size="10" font-weight="600" fill="var(--accent)">
+          <circle cx="22" cy="118" r="10" fill="var(--accent)"/><text x="22" y="121" text-anchor="middle" fill="var(--surface)">1</text>
+          <text x="40" y="121" fill="var(--text-dim)">decide timeout</text>
+
+          <circle cx="22" cy="161" r="10" fill="var(--accent)"/><text x="22" y="164" text-anchor="middle" fill="var(--surface)">2</text>
+          <text x="40" y="164" fill="var(--text-dim)">block in selector</text>
+
+          <circle cx="22" cy="232" r="10" fill="var(--accent)"/><text x="22" y="235" text-anchor="middle" fill="var(--surface)">3</text>
+          <text x="40" y="235" fill="var(--text-dim)">I/O events → _ready</text>
+
+          <circle cx="22" cy="278" r="10" fill="var(--accent)"/><text x="22" y="281" text-anchor="middle" fill="var(--surface)">4</text>
+          <text x="40" y="281" fill="var(--text-dim)">expired timers → _ready</text>
+
+          <circle cx="22" cy="332" r="10" fill="var(--accent)"/><text x="22" y="335" text-anchor="middle" fill="var(--surface)">5</text>
+          <text x="40" y="335" fill="var(--text-dim)">snapshot _ready (ntodo)</text>
+
+          <circle cx="22" cy="378" r="10" fill="var(--accent)"/><text x="22" y="381" text-anchor="middle" fill="var(--surface)">6</text>
+          <text x="40" y="381" fill="var(--text-dim)">run each callback</text>
+        </g>
+
+        <!-- selector → ready arrow (step 3) -->
+        <path d="M 260 192 Q 220 215 200 232 L 260 232" class="diag-arrow" marker-end="url(#arrB)" stroke="var(--accent)" opacity="0.7"/>
+        <text x="270" y="222" class="diag-text diag-text--dim">EPOLLIN, EPOLLOUT…</text>
+
+        <!-- scheduled → ready arrow (step 4) -->
+        <path d="M 480 90 Q 500 200 380 278 L 285 278" class="diag-arrow" marker-end="url(#arrB)" stroke="var(--teal)" opacity="0.7"/>
+        <text x="430" y="240" class="diag-text diag-text--dim">deadline ≤ now</text>
+
+        <!-- callbacks run (step 6) -->
+        <rect x="200" y="354" width="280" height="48" rx="6" fill="var(--surface)" stroke="var(--border-bright)"/>
+        <text x="340" y="376" text-anchor="middle" class="diag-text" fill="var(--text-bright)">handle._run()  ×  ntodo</text>
+        <text x="340" y="394" text-anchor="middle" class="diag-text diag-text--dim">each callback can schedule more — they queue for next turn</text>
+
+        <!-- arrow ready → run -->
+        <path d="M 160 82 L 160 354" class="diag-arrow" stroke-dasharray="3 3" opacity="0.4"/>
+        <path d="M 160 354 L 200 378" class="diag-arrow" marker-end="url(#arrB)" opacity="0.5"/>
+
+        <!-- loop arrow -->
+        <path d="M 600 392 Q 660 392 660 60 L 480 60" class="diag-arrow" marker-end="url(#arrB)" stroke="var(--text-muted)" stroke-dasharray="4 3"/>
+        <text x="652" y="240" class="diag-text diag-text--dim" transform="rotate(-90 652 240)">next iteration</text>
+      </svg>
+    </div>
+
+    <p>Two details worth lingering on. First, if <code>_ready</code> has callbacks in it already, <code>timeout</code> is zero — the selector returns immediately without sleeping. The loop never blocks if there is work to do. Second, the snapshot in step 5 matters: callbacks that schedule new callbacks during this iteration do not get to run in the same turn. They wait for the next one. This bounds the work per turn and prevents one chatty callback from starving the selector.</p>
+
+    <h2 id="s5"><span class="num">§5</span>Future, Coroutine, Task — three things constantly confused</h2>
+
+    <p>The single biggest tax of learning asyncio is keeping these three straight. They are not interchangeable, and the documentation often uses them as if they are. Here is the shape of each:</p>
+
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table class="data">
+          <thead>
+            <tr>
+              <th>name</th>
+              <th>what it is</th>
+              <th>what it holds</th>
+              <th>who resolves it</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Future</td>
+              <td>A placeholder for a value-not-yet-known.</td>
+              <td>state, result, exception, callback list</td>
+              <td>Anyone with the object can call <code>set_result</code>.</td>
+            </tr>
+            <tr>
+              <td>Coroutine</td>
+              <td>A paused function frame.</td>
+              <td>bytecode pointer, locals, value stack</td>
+              <td>You drive it with <code>.send()</code> until it raises <code>StopIteration</code>.</td>
+            </tr>
+            <tr>
+              <td>Task</td>
+              <td>A Future that drives a Coroutine.</td>
+              <td>everything a Future has, plus the coro it owns</td>
+              <td>It resolves <em>itself</em> when its coroutine returns.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <p>The Task is the glue. It is what you actually get back from <code>asyncio.create_task(coro)</code>, and it is what makes "fire and forget" work. Here is what it does, in a form short enough to read in one sitting:</p>
+
+<pre class="code-block"><span class="kw">class</span> <span class="ty">Task</span>(<span class="ty">Future</span>):
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, coro, loop):
+        <span class="fn">super</span>().<span class="fn">__init__</span>(loop)
+        self._coro = coro
+        loop.<span class="fn">call_soon</span>(self._step)       <span class="com"># schedule first tick</span>
+
+    <span class="kw">def</span> <span class="fn">_step</span>(self, exc=<span class="kw">None</span>):
+        <span class="kw">try</span>:
+            <span class="kw">if</span> exc <span class="kw">is</span> <span class="kw">None</span>:
+                result = self._coro.<span class="fn">send</span>(<span class="kw">None</span>)        <span class="com"># run until next await</span>
+            <span class="kw">else</span>:
+                result = self._coro.<span class="fn">throw</span>(exc)
+        <span class="kw">except</span> <span class="ty">StopIteration</span> <span class="kw">as</span> e:
+            self.<span class="fn">set_result</span>(e.value)              <span class="com"># coro returned: I am done</span>
+        <span class="kw">except</span> <span class="ty">BaseException</span> <span class="kw">as</span> e:
+            self.<span class="fn">set_exception</span>(e)
+        <span class="kw">else</span>:
+            <span class="com"># `result` is the Future the coro yielded. Resume me when it&#39;s done.</span>
+            result.<span class="fn">add_done_callback</span>(self._wakeup)
+
+    <span class="kw">def</span> <span class="fn">_wakeup</span>(self, fut):
+        <span class="kw">try</span>:
+            value = fut.<span class="fn">result</span>()
+        <span class="kw">except</span> <span class="ty">BaseException</span> <span class="kw">as</span> e:
+            self.<span class="fn">_step</span>(exc=e)
+        <span class="kw">else</span>:
+            self.<span class="fn">_step</span>()                         <span class="com"># next .send(None)</span></pre>
+    <p class="code-caption">A Task in twenty lines. The full version in asyncio handles cancellation, context, and exception groups — but the spine is this.</p>
+
+    <p>Walk it once. Task gets a coroutine. It schedules <code>_step</code> for the next loop turn. <code>_step</code> calls <code>.send(None)</code> on the coroutine. The coroutine runs until it hits an <code>await</code> on something not-yet-ready, which yields a Future. <code>_step</code> catches that Future and registers <code>_wakeup</code> as its done-callback. The Task is now dormant until the Future resolves. When the Future resolves — because the selector saw an I/O event, or a timer fired, or another task called <code>set_result</code> — <code>_wakeup</code> runs, which calls <code>_step</code> again, which calls <code>.send(None)</code> again. Repeat until the coroutine raises <code>StopIteration</code>, at which point the Task sets its own result. Done.</p>
+
+    <p>This is the entire scheduler-to-coroutine bridge. Every <code>await</code> in your program is a step through this state machine, one tick of <code>_run_once</code> at a time.</p>
+
+    <div class="callout">
+      <span class="callout__label">Sidebar — Queue</span>
+      <p><code>asyncio.Queue</code> is the producer/consumer primitive built directly on Futures. Internally, <code>get()</code> checks if the queue is empty; if it is, it creates a Future, parks it on a waiters list, and returns it (which the caller awaits). <code>put()</code> appends to the deque, then pops the oldest waiting Future and calls <code>set_result</code> on it — which resumes whichever coroutine was awaiting <code>get()</code>. A Go channel without the type system.</p>
+    </div>
+
+    <h2 id="s6"><span class="num">§6</span>The cooperative trap, with numbers</h2>
+
+    <p>Here is the single most-important fact about the loop: <strong>nothing preempts a running callback.</strong> Once a coroutine starts executing between two <code>await</code> points, it owns the loop until it yields again. If the work between yields takes ten milliseconds of CPU, every other task on that loop waits ten milliseconds. If it takes two hundred, every other task waits two hundred.</p>
+
+    <p>This is the cost of cooperative scheduling and it is the easiest mistake to make. The Python committed in handler code does not advertise its blocking-ness. <code>hashlib.pbkdf2_hmac</code> looks innocent. So does <code>json.loads</code> on a 50 MB payload. So does a regex on user input. None of them <code>await</code>. None of them yield. All of them freeze the loop.</p>
+
+    <p>A concrete demo. Two endpoints, served by one asyncio loop:</p>
+
+<pre class="code-block"><span class="kw">async def</span> <span class="fn">fast</span>(request):
+    <span class="kw">return</span> {<span class="str">"ok"</span>: <span class="kw">True</span>}
+
+<span class="kw">async def</span> <span class="fn">slow</span>(request):
+    <span class="com"># 200 ms of CPU. No I/O. No await.</span>
+    hashlib.<span class="fn">pbkdf2_hmac</span>(<span class="str">"sha256"</span>, <span class="str">b"p"</span>, <span class="str">b"s"</span>, <span class="num">1_000_000</span>)
+    <span class="kw">return</span> {<span class="str">"ok"</span>: <span class="kw">True</span>}</pre>
+
+    <p>The honest way to measure the trap isn't average request latency — most requests will be fine, since they don't overlap with the blocking call. The right metric is <em>loop stall</em>: how late a callback that wanted to fire on a 10&nbsp;ms tick actually fires. A healthy loop has stalls on the order of timer-resolution noise. A loop in the trap has one enormous stall per blocking call. Measured on my laptop, with <code>pbkdf2_hmac</code> taking ~150&nbsp;ms:</p>
+
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table class="data">
+          <thead>
+            <tr>
+              <th>scenario</th>
+              <th>p50 stall</th>
+              <th>p99 stall</th>
+              <th>worst</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>loop idle</td>
+              <td>1.1 ms</td>
+              <td>1.2 ms</td>
+              <td>1.2 ms</td>
+            </tr>
+            <tr>
+              <td>blocking /slow (as written)</td>
+              <td>1.1 ms</td>
+              <td><strong>173.8 ms</strong></td>
+              <td><strong>173.8 ms</strong></td>
+            </tr>
+            <tr>
+              <td>/slow via run_in_executor</td>
+              <td>1.0 ms</td>
+              <td>6.0 ms</td>
+              <td>6.0 ms</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <p>Look at the p50 column. It is essentially identical across the three scenarios — which is exactly how this trap kills you in production. Aggregate latency dashboards look <em>fine</em>. The single request that happened to land while the loop was frozen sees the entire blocking duration as its latency. The next request after that is fine again. p99 explodes; p50 doesn't move. If you are oncall and the only dashboard you watch is the average, you will not see this until someone notices the timeouts piling up.</p>
+
+    <p>The fix is one line:</p>
+
+<pre class="code-block"><span class="kw">async def</span> <span class="fn">slow</span>(request):
+    loop = asyncio.<span class="fn">get_running_loop</span>()
+    <span class="kw">await</span> loop.<span class="fn">run_in_executor</span>(
+        <span class="kw">None</span>,                              <span class="com"># default ThreadPoolExecutor</span>
+        hashlib.pbkdf2_hmac, <span class="str">"sha256"</span>, <span class="str">b"p"</span>, <span class="str">b"s"</span>, <span class="num">1_000_000</span>,
+    )
+    <span class="kw">return</span> {<span class="str">"ok"</span>: <span class="kw">True</span>}</pre>
+
+    <p><code>run_in_executor</code> punts the CPU work to a thread pool and returns a Future the loop can <code>await</code>. The thread runs the CPU work (paying GIL contention — pbkdf2 releases it, so this is fine; pure Python wouldn't be), and when it's done, the Future resolves and the coroutine resumes. The loop keeps cycling the whole time.</p>
+
+    <div class="diagram">
+      <div class="diagram__title">Diagram C · the trap, and the way out</div>
+      <p class="diagram__caption">Above: the loop is frozen while <code>/slow</code> burns CPU. Below: <code>run_in_executor</code> punts to a worker thread; the loop keeps serving <code>/fast</code> the whole time.</p>
+
+      <svg viewBox="0 0 680 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Two timelines comparing blocking CPU work versus run_in_executor">
+        <!-- top: blocking -->
+        <text x="20" y="28" class="diag-text diag-text--label" fill="var(--accent)">blocking call — loop frozen</text>
+
+        <text x="20" y="52" class="diag-text diag-text--dim">loop</text>
+        <line x1="80" y1="52" x2="640" y2="52" class="diag-line"/>
+        <rect x="80" y="44" width="40" height="16" fill="var(--teal)" opacity="0.7"/>
+        <text x="100" y="56" class="diag-text" text-anchor="middle" fill="var(--surface)">/f</text>
+        <rect x="125" y="44" width="280" height="16" fill="var(--accent)" opacity="0.85"/>
+        <text x="265" y="56" class="diag-text" text-anchor="middle" fill="var(--surface)" font-weight="600">/slow — pbkdf2 (~200 ms, loop frozen)</text>
+        <rect x="410" y="44" width="40" height="16" fill="var(--teal)" opacity="0.7"/>
+        <text x="430" y="56" class="diag-text" text-anchor="middle" fill="var(--surface)">/f</text>
+
+        <text x="20" y="92" class="diag-text diag-text--dim">/fast queue</text>
+        <line x1="80" y1="92" x2="640" y2="92" class="diag-line"/>
+        <g fill="var(--teal)">
+          <circle cx="140" cy="92" r="3"/><circle cx="180" cy="92" r="3"/><circle cx="220" cy="92" r="3"/>
+          <circle cx="260" cy="92" r="3"/><circle cx="300" cy="92" r="3"/><circle cx="340" cy="92" r="3"/>
+          <circle cx="380" cy="92" r="3"/>
+        </g>
+        <text x="265" y="111" class="diag-text" text-anchor="middle" fill="var(--accent)">7 requests waiting — none can run</text>
+
+        <!-- divider -->
+        <line x1="20" y1="145" x2="660" y2="145" class="diag-line" stroke-dasharray="2 4"/>
+
+        <!-- bottom: executor -->
+        <text x="20" y="172" class="diag-text diag-text--label" fill="var(--teal)">run_in_executor — loop keeps cycling</text>
+
+        <text x="20" y="196" class="diag-text diag-text--dim">loop</text>
+        <line x1="80" y1="196" x2="640" y2="196" class="diag-line"/>
+        <rect x="80" y="188" width="40" height="16" fill="var(--teal)" opacity="0.7"/>
+        <text x="100" y="200" class="diag-text" text-anchor="middle" fill="var(--surface)">/f</text>
+        <rect x="125" y="188" width="20" height="16" fill="var(--accent)" opacity="0.4"/>
+        <rect x="150" y="188" width="32" height="16" fill="var(--teal)" opacity="0.7"/>
+        <text x="166" y="200" class="diag-text" text-anchor="middle" fill="var(--surface)">/f</text>
+        <rect x="187" y="188" width="32" height="16" fill="var(--teal)" opacity="0.7"/>
+        <text x="203" y="200" class="diag-text" text-anchor="middle" fill="var(--surface)">/f</text>
+        <rect x="224" y="188" width="32" height="16" fill="var(--teal)" opacity="0.7"/>
+        <text x="240" y="200" class="diag-text" text-anchor="middle" fill="var(--surface)">/f</text>
+        <rect x="261" y="188" width="32" height="16" fill="var(--teal)" opacity="0.7"/>
+        <text x="277" y="200" class="diag-text" text-anchor="middle" fill="var(--surface)">/f</text>
+        <rect x="298" y="188" width="32" height="16" fill="var(--teal)" opacity="0.7"/>
+        <text x="314" y="200" class="diag-text" text-anchor="middle" fill="var(--surface)">/f</text>
+        <rect x="335" y="188" width="32" height="16" fill="var(--teal)" opacity="0.7"/>
+        <text x="351" y="200" class="diag-text" text-anchor="middle" fill="var(--surface)">/f</text>
+        <rect x="385" y="188" width="20" height="16" fill="var(--accent)" opacity="0.4"/>
+
+        <text x="20" y="236" class="diag-text diag-text--dim">thread pool</text>
+        <line x1="80" y1="236" x2="640" y2="236" class="diag-line"/>
+        <rect x="135" y="228" width="270" height="16" fill="var(--rust)" opacity="0.65"/>
+        <text x="270" y="240" class="diag-text" text-anchor="middle" fill="var(--surface)" font-weight="600">worker thread: pbkdf2 (~200 ms)</text>
+
+        <path d="M 135 213 L 135 228" class="diag-arrow" marker-end="url(#arrB)"/>
+        <text x="68" y="222" class="diag-text diag-text--dim" font-size="10">punt</text>
+        <path d="M 405 228 L 405 213" class="diag-arrow" marker-end="url(#arrB)"/>
+        <text x="420" y="222" class="diag-text diag-text--dim" font-size="10">resume</text>
+
+        <text x="270" y="275" class="diag-text" text-anchor="middle" fill="var(--teal)">/fast served continuously</text>
+      </svg>
+    </div>
+
+    <div class="callout">
+      <span class="callout__label">From Go</span>
+      <p>Go has it easier here, in a narrow sense. Since Go 1.14 the runtime preempts goroutines mid-CPU-burn — it sends <code>SIGURG</code> to the OS thread, and the signal handler reschedules the goroutine. CPython has no equivalent. The bytecode interpreter cannot be safely interrupted mid-instruction without breaking refcount invariants (see Part 1), and the event loop has no signal of its own. If your coroutine doesn't <code>await</code>, the loop cannot make it.</p>
+    </div>
+
+    <h2 id="s7"><span class="num">§7</span>Cancellation</h2>
+
+    <p>You have a Task. You want it to stop. <code>task.cancel()</code> does not stop it immediately. It sets a flag. The next time the loop tries to step the Task, instead of calling <code>coro.send(None)</code>, it calls <code>coro.throw(CancelledError())</code> — injecting an exception at the suspension point. The coroutine can catch it (and probably shouldn't), do some cleanup, and re-raise; or just let it propagate.</p>
+
+    <p>This means a Task that is not currently parked at an <code>await</code> — say, because it's in the middle of a CPU-bound loop — <em>cannot</em> be cancelled until it reaches the next yield. Cancellation, like everything else in cooperative scheduling, is cooperative.</p>
+
+    <div class="callout callout--trap">
+      <span class="callout__label">Trap</span>
+      <p>Since Python 3.8, <code>CancelledError</code> inherits from <code>BaseException</code>, <em>not</em> <code>Exception</code>. This is deliberate. It means <code>try: ... except Exception:</code> blocks will not swallow cancellations — they propagate up through your generic handlers and stop the task as intended. If you find yourself catching <code>BaseException</code> in async code, ask yourself whether you really mean to suppress cancellation. Almost never.</p>
+    </div>
+
+    <p>The companion primitive is <code>asyncio.timeout</code>, added in 3.11:</p>
+
+<pre class="code-block"><span class="kw">async with</span> asyncio.<span class="fn">timeout</span>(<span class="num">5.0</span>):
+    response = <span class="kw">await</span> fetch(url)</pre>
+
+    <p>It schedules a <code>cancel()</code> on the current task five seconds from now. If the block exits first, the cancel is removed. If the timer fires first, a <code>CancelledError</code> is injected; the context manager catches it and re-raises as <code>TimeoutError</code>. Same machinery, friendlier surface.</p>
+
+    <p>And occasionally you have a coroutine you genuinely want to protect — usually a cleanup that must finish even if its caller is being cancelled. That's <code>asyncio.shield(coro)</code>: cancellations on the outer task do not propagate into the shielded coroutine. Use it sparingly; shielded work that runs forever is a common source of hung shutdowns.</p>
+
+    <h2 id="s8"><span class="num">§8</span>TaskGroup — structured concurrency, finally</h2>
+
+    <p>For most of asyncio's life, the way to run several coroutines concurrently was <code>asyncio.gather</code>. It has a famously rough edge: if one task raises, the others keep running. You could opt into <code>return_exceptions=True</code>, or wrap things in <code>asyncio.wait</code> with a clever <code>FIRST_EXCEPTION</code> mode, but the default left tasks running after their siblings had already failed. Easy to leak. Easy to misread.</p>
+
+    <p>Python 3.11 borrowed Trio's <em>nursery</em> pattern and called it <code>TaskGroup</code>:</p>
+
+<pre class="code-block"><span class="kw">async with</span> asyncio.<span class="fn">TaskGroup</span>() <span class="kw">as</span> tg:
+    tg.<span class="fn">create_task</span>(<span class="fn">fetch</span>(<span class="str">"https://a"</span>))
+    tg.<span class="fn">create_task</span>(<span class="fn">fetch</span>(<span class="str">"https://b"</span>))
+    tg.<span class="fn">create_task</span>(<span class="fn">fetch</span>(<span class="str">"https://c"</span>))
+<span class="com"># control reaches here only when all three are done — or all three are cancelled.</span></pre>
+
+    <p>The invariant the <code>async with</code> guarantees is strong: when the block exits, every task created inside it has finished, errored, or been cancelled. If one task raises (other than <code>CancelledError</code>), every sibling is cancelled and the exceptions are collected into an <code>ExceptionGroup</code> (PEP 654) and re-raised. No tasks survive the block. No exceptions are lost.</p>
+
+    <p>This is the structured-concurrency idea: a function's concurrent children belong to the function, not to the program, and they cannot outlive it. Nathaniel J. Smith's <em>Notes on Structured Concurrency</em> (2018) is the canonical write-up — the analogy to <code>goto</code>-versus-block-scope is genuinely useful. Old <code>gather</code> code, where Tasks could leak past the function that created them, is now technical debt. Reach for <code>TaskGroup</code> by default.</p>
+
+    <h2 id="s9"><span class="num">§9</span>A short list to take with you</h2>
+
+    <ul class="takeaways">
+      <li>One thread, one loop, one <code>epoll_wait</code>. That is the whole concurrency model.</li>
+      <li><code>await</code> yields. It does not wait. The waiting is the loop's job.</li>
+      <li>Anything that doesn't <code>await</code> blocks every other task on the loop. There is no preemption.</li>
+      <li><code>run_in_executor</code> for CPU work; <code>TaskGroup</code> for fan-out; <code>asyncio.timeout</code> for deadlines.</li>
+      <li>The loop is fifty lines. Open <code>Lib/asyncio/base_events.py</code> and read <code>_run_once</code>.</li>
+    </ul>
+
+    <div class="bridge">
+      <div class="bridge__label">Up next · Part 3 of 3</div>
+      <div class="bridge__title">Servers, in earnest</div>
+      <p>We have a scheduler. Now: what does a real server do inside it? Part 3 is the production stack — FastAPI on Starlette on uvicorn on asyncio, plus asyncpg, Redis, JWT, and the specific places where the abstraction leaks. Connection pools that pretend to be infinite. Blocking calls hiding in libraries you trust. Graceful shutdown that almost never is. The interesting questions are no longer about asyncio mechanics; they are about where the mechanics meet code that did not necessarily expect them.</p>
+    </div>
+
+  </section>
+
+</article>
+
+<script>
+  // Theme toggle — respects saved preference, falls back to prefers-color-scheme
+  (function () {
+    const root = document.documentElement;
+    const saved = localStorage.getItem('theme');
+    if (saved) {
+      root.setAttribute('data-theme', saved);
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      root.setAttribute('data-theme', 'dark');
+    }
+    document.querySelectorAll('[data-theme-toggle]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        root.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+      });
+    });
+  })();
+
+  // Reading progress
+  (function () {
+    const bar = document.getElementById('progress');
+    if (!bar) return;
+    let raf = 0;
+    const update = () => {
+      const doc = document.documentElement;
+      const scrolled = doc.scrollTop || document.body.scrollTop;
+      const height = doc.scrollHeight - doc.clientHeight;
+      bar.style.width = height > 0 ? (scrolled / height * 100) + '%' : '0%';
+      raf = 0;
+    };
+    window.addEventListener('scroll', () => {
+      if (!raf) raf = requestAnimationFrame(update);
+    }, { passive: true });
+    update();
+  })();
+</script>
+
+</body>
+</html>
