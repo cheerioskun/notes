@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Asyncio Sidequests — Part 3 of Python Concurrency</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'Crimson Pro', Georgia, serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  }
+
+  html[data-theme="light"] {
+    --bg: #faf6f0;
+    --bg-tint: #f4ece0;
+    --surface: #ffffff;
+    --surface-elevated: #fffdf9;
+    --surface-recessed: #f1e9db;
+    --border: rgba(60, 40, 20, 0.10);
+    --border-bright: rgba(60, 40, 20, 0.20);
+    --text: #2a2018;
+    --text-bright: #1a130c;
+    --text-dim: #6b5840;
+    --text-muted: #8a7660;
+
+    --accent: #b8472a;
+    --accent-dim: rgba(184, 71, 42, 0.10);
+    --accent-bright: #d4583a;
+    --teal: #1e5f5c;
+    --teal-dim: rgba(30, 95, 92, 0.10);
+    --teal-bright: #2a807c;
+    --gold: #b8860b;
+    --gold-dim: rgba(184, 134, 11, 0.10);
+    --rust: #8b3a1f;
+    --sage: #6a7d3c;
+    --sage-dim: rgba(106, 125, 60, 0.10);
+  }
+
+  html[data-theme="dark"] {
+    --bg: #18120c;
+    --bg-tint: #221a12;
+    --surface: #221a12;
+    --surface-elevated: #2a2018;
+    --surface-recessed: #14100a;
+    --border: rgba(240, 220, 190, 0.10);
+    --border-bright: rgba(240, 220, 190, 0.22);
+    --text: #efe4d2;
+    --text-bright: #fff8e8;
+    --text-dim: #b8a888;
+    --text-muted: #948060;
+
+    --accent: #e87a5b;
+    --accent-dim: rgba(232, 122, 91, 0.14);
+    --accent-bright: #f29478;
+    --teal: #4dbab5;
+    --teal-dim: rgba(77, 186, 181, 0.14);
+    --teal-bright: #6dd0cb;
+    --gold: #e0b048;
+    --gold-dim: rgba(224, 176, 72, 0.14);
+    --rust: #c66f4a;
+    --sage: #a8b85e;
+    --sage-dim: rgba(168, 184, 94, 0.14);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse at 12% 0%, var(--teal-dim) 0%, transparent 45%),
+      radial-gradient(ellipse at 88% 12%, var(--accent-dim) 0%, transparent 50%);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 19px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    overflow-wrap: break-word;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+  body * { min-width: 0; }
+
+  .progress {
+    position: fixed; top: 0; left: 0; width: 0%; height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--teal));
+    z-index: 100; transition: width 0.08s linear;
+  }
+
+  .site-header {
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex; justify-content: space-between; align-items: center;
+    max-width: 1100px; margin: 0 auto;
+  }
+  .site-header__title {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 2.5px; text-transform: uppercase; color: var(--text-muted);
+  }
+  .theme-toggle {
+    background: none; border: 1px solid var(--border-bright);
+    color: var(--text-dim); padding: 6px 14px; border-radius: 4px;
+    cursor: pointer; font-family: var(--font-mono);
+    font-size: 11px; letter-spacing: 1px; transition: all 0.2s;
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+
+  .page { max-width: 720px; margin: 0 auto; padding: 60px 32px 120px; }
+
+  .toc {
+    background: var(--surface-recessed); border: 1px solid var(--border);
+    border-radius: 8px; padding: 22px 28px; margin-bottom: 56px;
+  }
+  .toc__label {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--text-muted);
+    margin-bottom: 14px;
+  }
+  .toc ol {
+    list-style: none; counter-reset: toc;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px;
+  }
+  @media (max-width: 560px) { .toc ol { grid-template-columns: 1fr; } }
+  .toc li { counter-increment: toc; line-height: 1.4; }
+  .toc a {
+    color: var(--text-dim); text-decoration: none; font-size: 15px;
+    display: flex; gap: 12px; align-items: baseline; padding: 4px 0;
+    transition: color 0.15s;
+  }
+  .toc a:hover { color: var(--accent); }
+  .toc a::before {
+    content: counter(toc, decimal-leading-zero);
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--accent); font-weight: 500; min-width: 24px;
+  }
+
+  .hero { margin-bottom: 40px; padding-bottom: 36px; border-bottom: 1px solid var(--border); }
+  .hero__series {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--accent);
+    margin-bottom: 20px;
+  }
+  .hero__series::before {
+    content: ''; display: inline-block; width: 24px; height: 1px;
+    background: var(--accent); vertical-align: middle; margin-right: 12px;
+    transform: translateY(-2px);
+  }
+  .hero__progress {
+    display: inline-block; margin-left: 14px; font-family: var(--font-mono);
+    font-size: 11px; letter-spacing: 4px; color: var(--text-muted);
+  }
+  .hero__progress .on { color: var(--accent); }
+  .hero__title {
+    font-family: var(--font-body); font-weight: 600;
+    font-size: clamp(36px, 5.5vw, 54px); line-height: 1.05;
+    letter-spacing: -1.2px; color: var(--text-bright);
+    margin-bottom: 18px; text-wrap: balance;
+  }
+  .hero__subtitle {
+    font-style: italic; font-size: 22px; line-height: 1.4;
+    color: var(--text-dim); max-width: 600px; margin-bottom: 28px;
+  }
+  .hero__meta {
+    font-family: var(--font-mono); font-size: 12px; color: var(--text-muted);
+    display: flex; gap: 20px; flex-wrap: wrap;
+  }
+  .hero__meta span { display: inline-flex; align-items: center; gap: 6px; }
+  .hero__meta span::before {
+    content: ''; width: 4px; height: 4px;
+    background: var(--text-muted); border-radius: 50%;
+  }
+  .hero__meta span:first-child::before { display: none; }
+
+  .prose p { margin-bottom: 1.3em; text-wrap: pretty; }
+  .prose strong { color: var(--text-bright); font-weight: 600; }
+  .prose em { font-style: italic; color: var(--text-bright); }
+  .prose a {
+    color: var(--accent); text-decoration: underline;
+    text-decoration-thickness: 1px; text-underline-offset: 3px;
+  }
+  .prose code {
+    font-family: var(--font-mono); font-size: 0.82em;
+    background: var(--accent-dim); color: var(--accent);
+    padding: 1px 6px; border-radius: 3px; font-weight: 500;
+  }
+
+  .lead { font-size: 22px; line-height: 1.55; color: var(--text-bright); margin-bottom: 36px; }
+
+  h2 {
+    font-family: var(--font-body); font-weight: 600; font-size: 32px;
+    line-height: 1.15; letter-spacing: -0.6px; color: var(--text-bright);
+    margin-top: 64px; margin-bottom: 8px; text-wrap: balance;
+    scroll-margin-top: 24px;
+  }
+  h2 .num {
+    font-family: var(--font-mono); font-size: 13px; font-weight: 500;
+    color: var(--accent); letter-spacing: 1px; display: block; margin-bottom: 6px;
+  }
+  h3 {
+    font-family: var(--font-body); font-weight: 600; font-size: 22px;
+    line-height: 1.3; color: var(--text-bright);
+    margin-top: 36px; margin-bottom: 12px;
+  }
+
+  .code-block {
+    font-family: var(--font-mono); font-size: 13px; line-height: 1.65;
+    background: var(--surface-recessed); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 16px 20px; margin: 24px 0;
+    overflow-x: auto; white-space: pre;
+    box-shadow: inset 0 1px 3px rgba(60, 40, 20, 0.04);
+  }
+  .code-block .kw  { color: var(--accent); font-weight: 500; }
+  .code-block .com { color: var(--text-muted); font-style: italic; }
+  .code-block .str { color: var(--sage); }
+  .code-block .num { color: var(--gold); }
+  .code-block .fn  { color: var(--teal); }
+  .code-block .ty  { color: var(--rust); }
+  .code-block .hl  { background: var(--accent-dim); padding: 0 4px; border-radius: 2px; }
+
+  .code-caption {
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+    margin-top: -16px; margin-bottom: 28px; padding-left: 4px; letter-spacing: 0.3px;
+  }
+
+  .pullquote {
+    margin: 48px 0; padding: 0 0 0 28px;
+    border-left: 3px solid var(--accent);
+    font-style: italic; font-size: 24px; line-height: 1.4;
+    color: var(--text-bright);
+  }
+
+  .callout {
+    margin: 32px 0; padding: 18px 22px;
+    background: var(--teal-dim); border-left: 3px solid var(--teal);
+    border-radius: 0 8px 8px 0;
+    font-size: 17px; line-height: 1.55;
+  }
+  .callout--warn { background: var(--gold-dim); border-left-color: var(--gold); }
+  .callout--trap { background: var(--accent-dim); border-left-color: var(--accent); }
+  .callout__label {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    letter-spacing: 1.8px; text-transform: uppercase;
+    color: var(--teal); margin-bottom: 6px; display: block;
+  }
+  .callout--warn .callout__label { color: var(--gold); }
+  .callout--trap .callout__label { color: var(--accent); }
+  .callout p { margin-bottom: 0; }
+  .callout p + p { margin-top: 10px; }
+  .callout code {
+    font-family: var(--font-mono); font-size: 0.82em;
+    background: rgba(0,0,0,0.04); color: inherit;
+    padding: 1px 5px; border-radius: 3px;
+  }
+
+  .diagram {
+    margin: 40px 0; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 28px 24px; box-shadow: 0 1px 3px rgba(60, 40, 20, 0.04);
+  }
+  .diagram__title {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 4px;
+  }
+  .diagram__caption {
+    font-family: var(--font-body); font-size: 15px; font-style: italic;
+    color: var(--text-dim); margin-bottom: 22px; max-width: 580px;
+  }
+  .diagram svg { display: block; width: 100%; height: auto; max-width: 100%; }
+
+  .table-wrap {
+    margin: 32px 0; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  }
+  .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.data {
+    width: 100%; border-collapse: collapse;
+    font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  }
+  table.data th {
+    background: var(--surface-recessed);
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1.4px; color: var(--text-dim);
+    text-align: left; padding: 12px 16px;
+    border-bottom: 2px solid var(--border-bright); white-space: nowrap;
+  }
+  table.data td {
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+    vertical-align: top; color: var(--text);
+  }
+  table.data tr:last-child td { border-bottom: none; }
+  table.data tr:nth-child(even) td { background: var(--accent-dim); }
+  table.data td:first-child {
+    font-family: var(--font-mono); font-size: 13px;
+    color: var(--accent); font-weight: 500; white-space: nowrap;
+  }
+
+  .takeaways {
+    margin: 32px 0; padding: 24px 28px;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border); border-radius: 10px;
+    list-style: none;
+  }
+  .takeaways li {
+    font-size: 18px; padding: 10px 0 10px 22px;
+    border-bottom: 1px dashed var(--border);
+    position: relative;
+  }
+  .takeaways li:last-child { border-bottom: none; }
+  .takeaways li::before {
+    content: '·'; color: var(--accent); font-weight: 600;
+    font-family: var(--font-mono);
+    position: absolute; left: 4px; top: 10px;
+  }
+
+  .bridge {
+    margin-top: 80px; padding: 36px 32px;
+    background: var(--surface-elevated); border: 1px solid var(--border);
+    border-radius: 12px; border-left: 4px solid var(--accent);
+  }
+  .bridge__label {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 12px;
+  }
+  .bridge__title {
+    font-weight: 600; font-size: 24px;
+    color: var(--text-bright); margin-bottom: 10px;
+  }
+  .bridge p { color: var(--text-dim); margin-bottom: 0; font-size: 17px; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .hero, .toc, .section { animation: fadeUp 0.5s ease-out both; }
+  .toc { animation-delay: 0.05s; }
+  .section { animation-delay: 0.10s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .page { padding: 36px 20px 80px; }
+    .site-header { padding: 14px 20px; }
+    body { font-size: 17px; }
+    .lead { font-size: 19px; }
+    h2 { font-size: 26px; margin-top: 48px; }
+    h3 { font-size: 19px; }
+    .pullquote { font-size: 20px; padding-left: 18px; }
+    .code-block { font-size: 12px; padding: 14px 16px; }
+    .diagram { padding: 20px 14px; }
+  }
+
+  .diag-text { font-family: var(--font-mono); font-size: 11px; fill: var(--text); }
+  .diag-text--dim { fill: var(--text-dim); }
+  .diag-text--label { font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+  .diag-line { stroke: var(--border-bright); stroke-width: 1.2; fill: none; }
+  .diag-arrow { stroke: var(--text-dim); stroke-width: 1.2; fill: none; }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+
+<header class="site-header">
+  <span class="site-header__title">Python Concurrency Decoded</span>
+  <button class="theme-toggle" data-theme-toggle aria-label="Toggle theme">◐ Theme</button>
+</header>
+
+<article class="page prose">
+
+  <header class="hero">
+    <div class="hero__series">
+      Python Concurrency · Part 3 of 5
+      <span class="hero__progress"><span class="on">●</span><span class="on">●</span><span class="on">●</span>○○</span>
+    </div>
+    <h1 class="hero__title">Asyncio Sidequests</h1>
+    <p class="hero__subtitle">The pieces of asyncio that don't fit the clean scheduler story but matter in production: self-pipes, signals, debug mode, the error messages, the policy mess, contextvars, and uvloop.</p>
+    <div class="hero__meta">
+      <span>~14 min read</span>
+      <span>Python 3.11+</span>
+      <span>Assumes: Part 2</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <div class="toc__label">In this part</div>
+    <ol>
+      <li><a href="#s1">The self-pipe wakes the loop from outside</a></li>
+      <li><a href="#s2">Signals piggyback on the same wire</a></li>
+      <li><a href="#s3">Debug mode is a bundle of checks, not a setting</a></li>
+      <li><a href="#s4">Six errors you will see, and what they mean</a></li>
+      <li><a href="#s5"><code>asyncio.run()</code> is the only entrypoint that still works</a></li>
+      <li><a href="#s6">Contextvars are loop-aware on purpose</a></li>
+      <li><a href="#s7">uvloop is the same scheduler, faster</a></li>
+      <li><a href="#s8">A short list to take with you</a></li>
+    </ol>
+  </nav>
+
+  <section class="section">
+
+    <p class="lead">Part 2 left a thread loose. We argued that the loop can sleep forever in <code>epoll_wait</code> because, in a strictly single-threaded program with no signal handlers and no timers, nothing else can produce work. Real programs have all three. A worker in <code>run_in_executor</code> finishes its job on another thread; <code>Ctrl-C</code> sends a signal that has to be handled on the loop thread; arbitrary code calls <code>loop.call_soon_threadsafe</code> from wherever. Each of these needs a way to <em>wake</em> a loop that is currently parked in a syscall with no Python code running. This is the mechanism that does it — plus the half-dozen other production details that don't fit the clean Part 2 narrative but earn their own paragraphs.</p>
+
+    <p>Treat this as an appendix you can dip into. Each section is independent. Read the ones that catch your eye; ignore the rest until they bite you.</p>
+
+    <h2 id="s1"><span class="num">§1</span>The self-pipe wakes the loop from outside</h2>
+
+    <p>The argument from Part 2 §4 has a hole, and the hole is exactly the size of every useful program. We claimed that when both queues are empty and the selector blocks forever, sleeping is safe because nothing else can produce work. That holds for a strictly single-threaded loop with no signals. A real program has at least three external sources of work the loop must notice: executor threads finishing, Unix signals, and explicit <code>call_soon_threadsafe</code> from other threads. None of these run on the loop thread; none of them appear as fd readiness events on the fds the loop is watching. If the loop is parked in <code>epoll_wait</code>, none of them can make it return.</p>
+
+    <p>The fix predates asyncio, predates Python — it is the <strong>self-pipe trick</strong>, a Unix idiom that I first saw attributed to D. J. Bernstein in the late 90s. At loop startup, the loop calls <code>os.pipe()</code> (or <code>socketpair</code> on systems where pipes have rougher semantics) and registers the read end with its own selector. The loop now watches one fd it owns itself. To wake the loop from outside, you write a single byte to the write end. The kernel marks the read end readable; <code>epoll_wait</code> returns with that fd in the ready list; the loop drains the byte and notices it has new work in its in-memory queues. Cost per wakeup: one <code>write</code> syscall, one byte of kernel memory, one <code>read</code> to drain. CPython sets this up in <code>Lib/asyncio/selector_events.py::BaseSelectorEventLoop._make_self_pipe</code>; the read callback just discards whatever bytes are sitting there.</p>
+
+    <div class="diagram">
+      <div class="diagram__title">Diagram A · waking the loop from outside</div>
+      <p class="diagram__caption">The loop is asleep in <code>epoll_wait</code>. A worker thread finishes, calls <code>call_soon_threadsafe</code>, which writes one byte to the eventfd the loop is registered to read. The kernel marks the fd readable; <code>epoll_wait</code> returns; the loop drains the byte and runs the queued callback on its own thread.</p>
+
+      <svg viewBox="0 0 680 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Two timelines showing the loop thread asleep in epoll_wait being woken by a worker thread writing to a self-pipe">
+        <defs>
+          <marker id="arrA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" fill-opacity="0.65"/>
+          </marker>
+        </defs>
+
+        <!-- LOOP THREAD (top lane) -->
+        <text x="20" y="28" class="diag-text diag-text--label" fill="var(--accent)">loop thread</text>
+        <line x1="80" y1="60" x2="640" y2="60" class="diag-line"/>
+
+        <rect x="80" y="48" width="380" height="24" rx="3" fill="var(--teal-dim)" stroke="var(--teal)" stroke-width="1.2"/>
+        <text x="270" y="64" text-anchor="middle" class="diag-text" fill="var(--teal)" font-weight="600">epoll_wait(timeout=None) — asleep</text>
+
+        <rect x="465" y="48" width="60" height="24" rx="3" fill="var(--accent-dim)" stroke="var(--accent)" stroke-width="1.2"/>
+        <text x="495" y="64" text-anchor="middle" class="diag-text" fill="var(--accent)" font-weight="600">drain</text>
+
+        <rect x="530" y="48" width="105" height="24" rx="3" fill="var(--surface-recessed)" stroke="var(--border-bright)"/>
+        <text x="582" y="64" text-anchor="middle" class="diag-text">run callback</text>
+
+        <text x="80" y="90" class="diag-text diag-text--dim" font-size="10">deque _ready = []</text>
+        <text x="465" y="90" class="diag-text diag-text--dim" font-size="10">_ready = [cb]</text>
+
+        <!-- SELF-PIPE (middle) -->
+        <rect x="290" y="120" width="120" height="60" rx="6" fill="var(--surface-recessed)" stroke="var(--border-bright)" stroke-width="1.4"/>
+        <text x="350" y="142" text-anchor="middle" class="diag-text" fill="var(--text-bright)" font-weight="600">self-pipe</text>
+        <text x="350" y="160" text-anchor="middle" class="diag-text diag-text--dim">read fd in selector</text>
+        <text x="350" y="174" text-anchor="middle" class="diag-text diag-text--dim" font-size="10">write fd held by loop</text>
+
+        <!-- worker → pipe (write) -->
+        <path d="M 270 232 Q 290 200 310 180" class="diag-arrow" marker-end="url(#arrA)" stroke="var(--accent)" stroke-width="1.4"/>
+        <text x="225" y="200" class="diag-text" fill="var(--accent)" font-size="10">write(fd, b'\0')</text>
+
+        <!-- pipe → loop (readable) -->
+        <path d="M 395 120 Q 425 90 465 72" class="diag-arrow" marker-end="url(#arrA)" stroke="var(--teal)" stroke-width="1.4"/>
+        <text x="440" y="108" class="diag-text" fill="var(--teal)" font-size="10">EPOLLIN → wake</text>
+
+        <!-- WORKER THREAD (bottom lane) -->
+        <text x="20" y="218" class="diag-text diag-text--label" fill="var(--rust)">worker thread (executor)</text>
+        <line x1="80" y1="244" x2="640" y2="244" class="diag-line"/>
+
+        <rect x="80" y="232" width="190" height="24" rx="3" fill="var(--rust)" opacity="0.55"/>
+        <text x="175" y="248" text-anchor="middle" class="diag-text" fill="var(--surface)" font-weight="600">pbkdf2 (CPU work)</text>
+
+        <rect x="270" y="232" width="120" height="24" rx="3" fill="var(--accent-dim)" stroke="var(--accent)" stroke-width="1.2"/>
+        <text x="330" y="248" text-anchor="middle" class="diag-text" fill="var(--accent)">call_soon_threadsafe</text>
+
+        <text x="80" y="276" class="diag-text diag-text--dim" font-size="10">done — must hand result back to the loop</text>
+        <text x="640" y="290" text-anchor="end" class="diag-text diag-text--dim" font-size="10">time →</text>
+      </svg>
+    </div>
+
+    <p>With this in place, <code>call_soon_threadsafe(cb)</code> is almost trivial: take a lock, append the Handle to <code>_ready</code>, write a byte to the self-pipe, release the lock. The write is the load-bearing line. Without it, the deque grows and the loop sleeps through the addition. With it, the loop wakes within microseconds of the cross-thread call, sees <code>_ready</code> is non-empty, runs the callback on its own thread. The non-threadsafe <code>call_soon</code> skips the write entirely — it assumes the caller is already on the loop thread and that whatever path got them here will return to the loop naturally. It also skips the lock. Calling <code>call_soon</code> from another thread is not just unsafe in the deque-mutation sense; even if the append happened to be atomic, the loop wouldn't notice it had happened.</p>
+
+    <p>On Linux the same job can be done with <strong>eventfd</strong> (Linux 2.6.22+, 2007), which is strictly nicer: one fd instead of two, an atomic 64-bit counter instead of a byte stream, no risk of the pipe buffer filling under pathological wakeup floods. CPython's stdlib doesn't reach for it directly — the self-pipe is portable to BSD and macOS and the difference doesn't show up in any realistic workload — but uvloop (which is libuv underneath) does. If you see <code>eventfd</code> in an asyncio program's <code>strace</code>, that's why.</p>
+
+    <div class="callout">
+      <span class="callout__label">The contract</span>
+      <p>Every line of asyncio code assumes it runs on the loop thread — no locks around the deque, no atomicity around Task state, no thread-local protection on contextvars. The self-pipe is not an optimisation; it is the contract. Everything that touches loop state must be funnelled back through the loop thread, and the self-pipe is the funnel.</p>
+    </div>
+
+    <h2 id="s2"><span class="num">§2</span>Signals piggyback on the same wire</h2>
+
+    <p>The same mechanism solves a problem that has nothing obviously to do with threading: how does Python deliver a signal to an asyncio program? The C-level signal handler runs at an arbitrary instruction boundary, possibly inside a refcount update, possibly inside a <code>malloc</code>. The interpreter is not reentrant. The handler cannot run Python code. So what does it do?</p>
+
+    <p>It writes one byte to a file descriptor. <code>signal.set_wakeup_fd(fd)</code> is the public knob — it tells CPython "when any signal arrives, write a byte to this fd before returning from the handler." asyncio sets that fd to the write end of its own self-pipe. The C handler does its single <code>write()</code> and returns. The loop wakes from <code>epoll_wait</code>, sees the self-pipe is readable, drains the byte, and dispatches the Python-level signal handler synchronously on its own thread.</p>
+
+<pre class="code-block"><span class="kw">import</span> asyncio, signal
+
+<span class="kw">async def</span> <span class="fn">main</span>():
+    loop = asyncio.<span class="fn">get_running_loop</span>()
+    loop.<span class="fn">add_signal_handler</span>(signal.SIGINT, <span class="kw">lambda</span>: <span class="fn">print</span>(<span class="str">"caught on loop thread"</span>))
+    <span class="kw">await</span> asyncio.<span class="fn">sleep</span>(<span class="num">3600</span>)         <span class="com"># Ctrl-C still responsive</span>
+
+asyncio.<span class="fn">run</span>(<span class="fn">main</span>())</pre>
+    <p class="code-caption">add_signal_handler installs a Python callback for the signal and ensures the wakeup fd is wired through the self-pipe.</p>
+
+    <p>The contrast with threaded code is sharper than it looks. <code>signal.signal(SIGINT, handler)</code> in a threaded program runs the handler on whatever thread the OS happened to interrupt — almost always the main thread, but if you have explicitly disabled main-thread signal delivery, it could be elsewhere. In asyncio, <code>add_signal_handler</code> guarantees the callback runs on the loop thread. This matters because the handler will likely want to touch loop state — cancel tasks, set events, schedule shutdown — and that state is not thread-safe. The self-pipe makes the guarantee free.</p>
+
+    <p>This is also why <code>Ctrl-C</code> in an asyncio program is so responsive. The loop is never more than one <code>epoll_wait</code> return away from noticing. The handler scribbles a byte, the kernel marks the fd readable, the syscall returns, and the loop dispatches. No polling, no checking, no <code>PyErr_CheckSignals</code> hot path. Just one byte through a pipe and the scheduler picks it up.</p>
+
+    <h2 id="s3"><span class="num">§3</span>Debug mode is a bundle of checks, not a setting</h2>
+
+    <p>Setting <code>PYTHONASYNCIODEBUG=1</code> or calling <code>asyncio.run(main(), debug=True)</code> is often described as "turn on extra warnings." That undersells it. Debug mode flips on roughly seven distinct mechanisms inside the loop, each of which catches a different category of bug. Knowing what each one does lets you decide whether the cost of running with debug on is acceptable for your environment.</p>
+
+    <p>The full inventory, from <code>Lib/asyncio/base_events.py</code> and friends:</p>
+
+<pre class="code-block"><span class="com"># 1. Slow-callback timing — each callback is timed; anything over</span>
+<span class="com">#    slow_callback_duration (default 100 ms) logs a WARNING with source.</span>
+
+<span class="com"># 2. Coroutine origin tracking — sys.set_coroutine_origin_tracking_depth(n)</span>
+<span class="com">#    records the call stack at the point each coroutine was created. The</span>
+<span class="com">#    'never awaited' warning then includes the creation traceback.</span>
+
+<span class="com"># 3. Resource warning escalation — un-awaited coroutines and pending tasks</span>
+<span class="com">#    that get garbage-collected log loudly, with their origin.</span>
+
+<span class="com"># 4. Cross-thread call detection — call_soon checks that it is running</span>
+<span class="com">#    on the loop thread; raises if not. (Without debug, this is silent</span>
+<span class="com">#    corruption.) This is the single most valuable check.</span>
+
+<span class="com"># 5. Future/Task strict checks — set_result on a non-pending Future raises</span>
+<span class="com">#    with a clearer message; Tasks created without a running loop are</span>
+<span class="com">#    rejected up front.</span>
+
+<span class="com"># 6. Selector slow-path warnings — if epoll_wait returns with fds that</span>
+<span class="com">#    have no registered handler, the loop logs (usually a sign of stale</span>
+<span class="com">#    transports).</span>
+
+<span class="com"># 7. SSL handshake timeouts — SSL operations get explicit deadlines so</span>
+<span class="com">#    hung TLS handshakes surface instead of parking forever.</span></pre>
+
+    <p>Number four is the one that earns its keep in development. Without debug mode, calling <code>loop.call_soon</code> from a worker thread silently appends to the deque and then waits for someone to wake the loop — which nobody will, because you forgot to use the threadsafe variant. The bug manifests as "my callback never ran" hours later when traffic shifts. With debug mode, the same call raises immediately at the offending line. The check is one <code>threading.get_ident()</code> comparison and it has caught more production bugs in my experience than any other asyncio feature.</p>
+
+    <p>The cost of running with debug on in production is the slow-callback timing — every callback pays for a <code>perf_counter()</code> call on entry and exit. On a busy server processing tens of thousands of callbacks per second, this is measurable but not catastrophic. Recommendation: debug everywhere in development; debug with <code>slow_callback_duration = 0.02</code> in staging; in production, either debug-on with a higher threshold or debug-off with the canary monitor from the <a href="./measuring-asyncio.html">measurement post</a> doing the equivalent work.</p>
+
+    <h2 id="s4"><span class="num">§4</span>Six errors you will see, and what they mean</h2>
+
+    <p>The asyncio surface has a small, finite set of error and warning messages that experienced users learn to read at a glance. New users see them and panic. They all have specific, mechanical causes — and reading them back to the mechanism they reveal is the fastest way to internalise how the runtime actually works.</p>
+
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table class="data">
+          <thead>
+            <tr>
+              <th>message</th>
+              <th>what really happened</th>
+              <th>fix</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>coroutine '…' was never awaited</td>
+              <td>You called an <code>async def</code> function and threw the coroutine object away. Body never ran.</td>
+              <td><code>await</code> it, or wrap with <code>asyncio.create_task</code> and keep a reference.</td>
+            </tr>
+            <tr>
+              <td>Task was destroyed but it is pending</td>
+              <td>A Task you created was garbage-collected while still suspended. You did not keep a reference, and the loop's strong reference is not enough on its own.</td>
+              <td>Hold the Task in a set you clear on completion. Or use <code>TaskGroup</code>, which holds for you.</td>
+            </tr>
+            <tr>
+              <td>exception was never retrieved</td>
+              <td>A Task failed, and nothing ever awaited it or called <code>.result()</code>. The exception was silently dropped.</td>
+              <td>Always <code>await</code> tasks you create, or attach <code>add_done_callback</code> that inspects <code>.exception()</code>.</td>
+            </tr>
+            <tr>
+              <td>got Future &lt;…&gt; attached to a different loop</td>
+              <td>You passed an awaitable between event loops. Each loop has its own selector and its own self-pipe; Futures are not portable.</td>
+              <td>Use <code>asyncio.run_coroutine_threadsafe</code> if you need to schedule into another loop from a thread.</td>
+            </tr>
+            <tr>
+              <td>This event loop is already running</td>
+              <td>You called <code>loop.run_until_complete</code> from inside an already-running loop. The runtime refuses to nest.</td>
+              <td>Use <code>await</code> if you're already in a coroutine, or <code>create_task</code> for fire-and-forget. Never nest <code>asyncio.run</code>.</td>
+            </tr>
+            <tr>
+              <td>There is no current event loop in thread '…'</td>
+              <td>You called <code>asyncio.get_event_loop()</code> in a non-main thread (3.10+) or anywhere (3.12+). The implicit-loop behaviour is gone.</td>
+              <td>Use <code>asyncio.run(main())</code> at the entrypoint. Inside coroutines, use <code>get_running_loop()</code>.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <p>Pattern: every one of these is a contract violation made visible. The framework is not punishing you; it is reporting a state it was not designed to handle, in the only place it can — at the point where the violation becomes externally observable. The "was never awaited" warning fires from the GC because that's the only place CPython can notice you dropped the coroutine. The "different loop" error fires from <code>add_done_callback</code> because that's the first operation that can't be made coherent across two selectors. Once you read them as "the framework is telling you when its invariants broke," they stop being scary.</p>
+
+    <h2 id="s5"><span class="num">§5</span><code>asyncio.run()</code> is the only entrypoint that still works</h2>
+
+    <p>asyncio shipped in 3.4 with a sprawling API for managing event loops. Through the 3.x lifecycle most of it has been deprecated, narrowed, or quietly removed. The historical archaeology is occasionally useful — old codebases still use the deprecated forms, and the deprecation arc is informative — but for new code the recommendation collapses to a single function.</p>
+
+    <p>The story in versions:</p>
+
+    <ul style="margin: 0 0 28px 24px; color: var(--text-dim); line-height: 1.7;">
+      <li><strong>3.4–3.6</strong> — <code>asyncio.get_event_loop()</code> would <em>create</em> a loop if none existed in the current thread. You wrote <code>loop = get_event_loop(); loop.run_until_complete(main())</code>. This implicit creation was the original sin: everything that touched a loop had a hidden side effect.</li>
+      <li><strong>3.7</strong> — <code>asyncio.run()</code> introduced. Creates a loop, runs the coroutine, closes the loop, drains pending tasks, all in one call. Recommended entrypoint from this version on.</li>
+      <li><strong>3.10</strong> — <code>get_event_loop()</code> emits <code>DeprecationWarning</code> when it would create a loop. Existing loops still returned silently.</li>
+      <li><strong>3.12</strong> — <code>get_event_loop()</code> raises <code>RuntimeError</code> if no loop is running. The implicit-create behaviour is gone.</li>
+      <li><strong>3.14</strong> — event loop policies (<code>asyncio.AbstractEventLoopPolicy</code> and friends) deprecated. The whole policy hierarchy was a pluggability point that almost no one used; uvloop was the one real customer, and it now installs itself differently.</li>
+    </ul>
+
+    <p>The current right answer is one line at the program entrypoint and one line inside coroutines:</p>
+
+<pre class="code-block"><span class="kw">async def</span> <span class="fn">main</span>():
+    loop = asyncio.<span class="fn">get_running_loop</span>()  <span class="com"># inside a coroutine — always works</span>
+    ...
+
+asyncio.<span class="fn">run</span>(<span class="fn">main</span>())                  <span class="com"># at the entrypoint — creates and closes the loop</span></pre>
+
+    <div class="callout callout--warn">
+      <span class="callout__label">Trap</span>
+      <p>If you read older asyncio tutorials, almost every example will use <code>asyncio.get_event_loop()</code> at module level. In 3.12+ this is an error in any thread that doesn't already have a running loop. If you maintain a codebase pinned to a 3.10 baseline, do a grep — those calls will start failing the moment you bump the interpreter.</p>
+    </div>
+
+    <h2 id="s6"><span class="num">§6</span>Contextvars are loop-aware on purpose</h2>
+
+    <p>The <code>contextvars</code> module is one of the few features added to Python specifically because asyncio existed. Threading-local storage doesn't work for coroutines — many coroutines share one thread, and a <code>threading.local</code> variable set in one task would leak into all of them. The fix, in 3.7, was a different abstraction: a <code>Context</code> object that wraps a snapshot of all <code>ContextVar</code> values, with explicit get/set semantics, and a loop that knows to swap contexts on every Task step.</p>
+
+    <p>The mechanism is built into the Task itself. When you call <code>asyncio.create_task(coro)</code>, the Task constructor calls <code>contextvars.copy_context()</code> to snapshot the current context, and stores it. Every subsequent <code>_step</code> on that Task runs the coroutine inside that captured context via <code>Context.run()</code>. The result: a <code>ContextVar</code> set inside a request handler is visible to every coroutine that handler awaits, transitively, all the way down — but invisible to sibling tasks running concurrently on the same loop.</p>
+
+<pre class="code-block"><span class="kw">import</span> contextvars, asyncio
+
+request_id: contextvars.<span class="ty">ContextVar</span>[str] = contextvars.<span class="ty">ContextVar</span>(<span class="str">"req"</span>)
+
+<span class="kw">async def</span> <span class="fn">inner</span>():
+    <span class="fn">print</span>(<span class="str">"inner sees:"</span>, request_id.<span class="fn">get</span>())
+
+<span class="kw">async def</span> <span class="fn">handle</span>(rid):
+    request_id.<span class="fn">set</span>(rid)
+    <span class="kw">await</span> <span class="fn">inner</span>()                  <span class="com"># sees rid</span>
+
+<span class="kw">async def</span> <span class="fn">main</span>():
+    <span class="kw">await</span> asyncio.<span class="fn">gather</span>(
+        <span class="fn">handle</span>(<span class="str">"a"</span>),                <span class="com"># prints "inner sees: a"</span>
+        <span class="fn">handle</span>(<span class="str">"b"</span>),                <span class="com"># prints "inner sees: b"</span>
+    )                              <span class="com"># neither contaminates the other</span>
+
+asyncio.<span class="fn">run</span>(<span class="fn">main</span>())</pre>
+    <p class="code-caption">Each gathered task gets its own captured context. The set() in one doesn't leak to the other.</p>
+
+    <p>The asymmetry worth internalising: contextvars propagate <em>within</em> the loop for free, and across the loop boundary for nothing. <code>run_in_executor</code> drops you into a thread pool worker that doesn't share contextvars with the loop. Anything you wanted preserved across that boundary has to be passed explicitly, or copied with <code>copy_context().run(fn, *args)</code> on the worker side. OpenTelemetry's auto-instrumentation handles this for the standard executor; hand-rolled threading does not. Most "we lost the trace ID" production mysteries are this boundary crossing, unguarded.</p>
+
+    <div class="callout">
+      <span class="callout__label">From Go</span>
+      <p><code>context.Context</code> in Go is the same idea with the opposite ergonomics. Go threads explicitly through every function signature: you must accept and forward <code>ctx</code>. Python's contextvars are ambient: any function can read them, no signature change required. The Go version is more visible at call sites and harder to lose; the Python version is invisible and survives third-party libraries that don't know about your context. Both ship the same essential thing — request-scoped state that flows with the work, not with the thread.</p>
+    </div>
+
+    <h2 id="s7"><span class="num">§7</span>uvloop is the same scheduler, faster</h2>
+
+    <p><a href="https://github.com/MagicStack/uvloop">uvloop</a> is a drop-in replacement for asyncio's event loop, written in Cython on top of libuv (the same C library Node.js uses). It implements the same public API — same <code>create_task</code>, same <code>TaskGroup</code>, same <code>await</code> — and benchmarks at roughly two to four times the throughput of the stdlib loop for I/O-heavy workloads. Installing it is two lines:</p>
+
+<pre class="code-block"><span class="kw">import</span> uvloop
+uvloop.<span class="fn">install</span>()                <span class="com"># before asyncio.run</span>
+
+<span class="com"># In Python 3.12+ the recommended form is:</span>
+<span class="kw">import</span> asyncio, uvloop
+asyncio.<span class="fn">run</span>(<span class="fn">main</span>(), loop_factory=uvloop.<span class="ty">EventLoopPolicy</span>().<span class="fn">new_event_loop</span>)</pre>
+
+    <p>What you gain is performance. What you lose is small but worth knowing:</p>
+
+    <ul style="margin: 0 0 28px 24px; color: var(--text-dim); line-height: 1.7;">
+      <li><strong>Selector module is bypassed.</strong> libuv uses epoll/kqueue directly; you cannot register fds with the stdlib <code>selectors</code> module and expect them to work. Most application code doesn't care.</li>
+      <li><strong>No <code>ProactorEventLoop</code> on Windows.</strong> uvloop is Unix-only. Cross-platform projects either skip it on Windows or use a conditional install.</li>
+      <li><strong>Subprocess semantics differ slightly.</strong> libuv's child-process handling is its own implementation; some edge cases around signal forwarding behave differently from stdlib.</li>
+      <li><strong>Debug mode is less informative.</strong> The Cython internals don't surface the slow-callback warnings or origin tracking the way <code>base_events.py</code> does. If you rely on debug mode for development, stick to stdlib in dev and switch to uvloop in prod.</li>
+    </ul>
+
+    <p>The mental model: every concept from Part 2 still holds. There is still one thread, one selector (libuv's), one <code>_run_once</code>-equivalent. Tasks still wrap coroutines, futures still resolve, the self-pipe still exists (as an eventfd this time). The difference is that all of it is in C — the inner loop doesn't allocate Python objects per callback, and the Task spine isn't paying interpreter overhead on every <code>send</code>. uvicorn enables it by default for exactly this reason; if you have measured your asyncio service and found that asyncio overhead is genuinely the bottleneck, uvloop is the cheapest win available.</p>
+
+    <div class="pullquote">
+      uvloop is not a different model. It is the same model with the interpreter taken out of the hot path.
+    </div>
+
+    <h2 id="s8"><span class="num">§8</span>A short list to take with you</h2>
+
+    <ul class="takeaways">
+      <li>The self-pipe is how the loop is woken from outside its own thread. Every cross-context primitive — executors, signals, <code>call_soon_threadsafe</code> — is a variant of writing one byte to it.</li>
+      <li>Signals deliver via <code>set_wakeup_fd</code> — the C handler writes one byte; the loop wakes and dispatches the Python handler synchronously on its own thread.</li>
+      <li>Debug mode is seven distinct checks bundled behind one flag. The cross-thread <code>call_soon</code> detector alone justifies running with it everywhere in dev.</li>
+      <li>asyncio errors are mechanism reports. "Was never awaited" is the GC noticing; "different loop" is a Future failing to attach. Read them backwards into the broken invariant.</li>
+      <li><code>asyncio.run()</code> is the only entrypoint. <code>get_event_loop()</code> is a deprecated artefact of 3.4. Inside coroutines, <code>get_running_loop()</code>.</li>
+      <li>Contextvars propagate across <code>await</code> for free, across thread/process boundaries for nothing. Copy explicitly when crossing.</li>
+      <li>uvloop is the same scheduler, written in C. If asyncio is your bottleneck, it is the cheapest win.</li>
+    </ul>
+
+    <div class="bridge">
+      <div class="bridge__label">Up next · Part 4 of 5</div>
+      <div class="bridge__title">Structured concurrency with anyio</div>
+      <p>asyncio gives you the mechanism. It doesn't give you the discipline. <code>asyncio.TaskGroup</code> in 3.11 was a half-step toward structured concurrency; anyio is the full one — checkpoints, cancel scopes, the guarantee that no task outlives the function that spawned it. Part 4 is the discipline layer, and the case for writing new async code anyio-first.</p>
+    </div>
+
+  </section>
+
+</article>
+
+<script>
+  (function () {
+    const root = document.documentElement;
+    const saved = localStorage.getItem('theme');
+    if (saved) {
+      root.setAttribute('data-theme', saved);
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      root.setAttribute('data-theme', 'dark');
+    }
+    document.querySelectorAll('[data-theme-toggle]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        root.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+      });
+    });
+  })();
+
+  (function () {
+    const bar = document.getElementById('progress');
+    if (!bar) return;
+    let raf = 0;
+    const update = () => {
+      const doc = document.documentElement;
+      const scrolled = doc.scrollTop || document.body.scrollTop;
+      const height = doc.scrollHeight - doc.clientHeight;
+      bar.style.width = height > 0 ? (scrolled / height * 100) + '%' : '0%';
+      raf = 0;
+    };
+    window.addEventListener('scroll', () => {
+      if (!raf) raf = requestAnimationFrame(update);
+    }, { passive: true });
+    update();
+  })();
+</script>
+
+</body>
+</html>

@@ -369,14 +369,15 @@
     list-style: none;
   }
   .takeaways li {
-    font-size: 18px; padding: 10px 0;
+    font-size: 18px; padding: 10px 0 10px 22px;
     border-bottom: 1px dashed var(--border);
-    display: flex; gap: 14px;
+    position: relative;
   }
   .takeaways li:last-child { border-bottom: none; }
   .takeaways li::before {
     content: '·'; color: var(--accent); font-weight: 600;
-    font-family: var(--font-mono); flex-shrink: 0;
+    font-family: var(--font-mono);
+    position: absolute; left: 4px; top: 10px;
   }
 
   /* BRIDGE */

@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Measure the Loop, Not the Request — instrumenting asyncio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'Crimson Pro', Georgia, serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  }
+
+  html[data-theme="light"] {
+    --bg: #faf6f0;
+    --bg-tint: #f4ece0;
+    --surface: #ffffff;
+    --surface-elevated: #fffdf9;
+    --surface-recessed: #f1e9db;
+    --border: rgba(60, 40, 20, 0.10);
+    --border-bright: rgba(60, 40, 20, 0.20);
+    --text: #2a2018;
+    --text-bright: #1a130c;
+    --text-dim: #6b5840;
+    --text-muted: #8a7660;
+
+    --accent: #b8472a;
+    --accent-dim: rgba(184, 71, 42, 0.10);
+    --accent-bright: #d4583a;
+    --teal: #1e5f5c;
+    --teal-dim: rgba(30, 95, 92, 0.10);
+    --teal-bright: #2a807c;
+    --gold: #b8860b;
+    --gold-dim: rgba(184, 134, 11, 0.10);
+    --rust: #8b3a1f;
+    --sage: #6a7d3c;
+    --sage-dim: rgba(106, 125, 60, 0.10);
+  }
+
+  html[data-theme="dark"] {
+    --bg: #18120c;
+    --bg-tint: #221a12;
+    --surface: #221a12;
+    --surface-elevated: #2a2018;
+    --surface-recessed: #14100a;
+    --border: rgba(240, 220, 190, 0.10);
+    --border-bright: rgba(240, 220, 190, 0.22);
+    --text: #efe4d2;
+    --text-bright: #fff8e8;
+    --text-dim: #b8a888;
+    --text-muted: #948060;
+
+    --accent: #e87a5b;
+    --accent-dim: rgba(232, 122, 91, 0.14);
+    --accent-bright: #f29478;
+    --teal: #4dbab5;
+    --teal-dim: rgba(77, 186, 181, 0.14);
+    --teal-bright: #6dd0cb;
+    --gold: #e0b048;
+    --gold-dim: rgba(224, 176, 72, 0.14);
+    --rust: #c66f4a;
+    --sage: #a8b85e;
+    --sage-dim: rgba(168, 184, 94, 0.14);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse at 12% 0%, var(--teal-dim) 0%, transparent 45%),
+      radial-gradient(ellipse at 88% 12%, var(--accent-dim) 0%, transparent 50%);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 19px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    overflow-wrap: break-word;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+  body * { min-width: 0; }
+
+  .progress {
+    position: fixed; top: 0; left: 0; width: 0%; height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--teal));
+    z-index: 100; transition: width 0.08s linear;
+  }
+
+  .site-header {
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex; justify-content: space-between; align-items: center;
+    max-width: 1100px; margin: 0 auto;
+  }
+  .site-header__title {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 2.5px; text-transform: uppercase; color: var(--text-muted);
+  }
+  .theme-toggle {
+    background: none; border: 1px solid var(--border-bright);
+    color: var(--text-dim); padding: 6px 14px; border-radius: 4px;
+    cursor: pointer; font-family: var(--font-mono);
+    font-size: 11px; letter-spacing: 1px; transition: all 0.2s;
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+
+  .page { max-width: 720px; margin: 0 auto; padding: 60px 32px 120px; }
+
+  .toc {
+    background: var(--surface-recessed); border: 1px solid var(--border);
+    border-radius: 8px; padding: 22px 28px; margin-bottom: 56px;
+  }
+  .toc__label {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--text-muted);
+    margin-bottom: 14px;
+  }
+  .toc ol {
+    list-style: none; counter-reset: toc;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px;
+  }
+  @media (max-width: 560px) { .toc ol { grid-template-columns: 1fr; } }
+  .toc li { counter-increment: toc; line-height: 1.4; }
+  .toc a {
+    color: var(--text-dim); text-decoration: none; font-size: 15px;
+    display: flex; gap: 12px; align-items: baseline; padding: 4px 0;
+    transition: color 0.15s;
+  }
+  .toc a:hover { color: var(--accent); }
+  .toc a::before {
+    content: counter(toc, decimal-leading-zero);
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--accent); font-weight: 500; min-width: 24px;
+  }
+
+  .hero { margin-bottom: 40px; padding-bottom: 36px; border-bottom: 1px solid var(--border); }
+  .hero__series {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--accent);
+    margin-bottom: 20px;
+  }
+  .hero__series::before {
+    content: ''; display: inline-block; width: 24px; height: 1px;
+    background: var(--accent); vertical-align: middle; margin-right: 12px;
+    transform: translateY(-2px);
+  }
+  .hero__title {
+    font-family: var(--font-body); font-weight: 600;
+    font-size: clamp(36px, 5.5vw, 54px); line-height: 1.05;
+    letter-spacing: -1.2px; color: var(--text-bright);
+    margin-bottom: 18px; text-wrap: balance;
+  }
+  .hero__subtitle {
+    font-style: italic; font-size: 22px; line-height: 1.4;
+    color: var(--text-dim); max-width: 600px; margin-bottom: 28px;
+  }
+  .hero__meta {
+    font-family: var(--font-mono); font-size: 12px; color: var(--text-muted);
+    display: flex; gap: 20px; flex-wrap: wrap;
+  }
+  .hero__meta span { display: inline-flex; align-items: center; gap: 6px; }
+  .hero__meta span::before {
+    content: ''; width: 4px; height: 4px;
+    background: var(--text-muted); border-radius: 50%;
+  }
+  .hero__meta span:first-child::before { display: none; }
+
+  .prose p { margin-bottom: 1.3em; text-wrap: pretty; }
+  .prose strong { color: var(--text-bright); font-weight: 600; }
+  .prose em { font-style: italic; color: var(--text-bright); }
+  .prose a {
+    color: var(--accent); text-decoration: underline;
+    text-decoration-thickness: 1px; text-underline-offset: 3px;
+  }
+  .prose code {
+    font-family: var(--font-mono); font-size: 0.82em;
+    background: var(--accent-dim); color: var(--accent);
+    padding: 1px 6px; border-radius: 3px; font-weight: 500;
+  }
+
+  .lead { font-size: 22px; line-height: 1.55; color: var(--text-bright); margin-bottom: 36px; }
+
+  h2 {
+    font-family: var(--font-body); font-weight: 600; font-size: 32px;
+    line-height: 1.15; letter-spacing: -0.6px; color: var(--text-bright);
+    margin-top: 64px; margin-bottom: 8px; text-wrap: balance;
+    scroll-margin-top: 24px;
+  }
+  h2 .num {
+    font-family: var(--font-mono); font-size: 13px; font-weight: 500;
+    color: var(--accent); letter-spacing: 1px; display: block; margin-bottom: 6px;
+  }
+  h3 {
+    font-family: var(--font-body); font-weight: 600; font-size: 22px;
+    line-height: 1.3; color: var(--text-bright);
+    margin-top: 36px; margin-bottom: 12px;
+  }
+
+  .code-block {
+    font-family: var(--font-mono); font-size: 13px; line-height: 1.65;
+    background: var(--surface-recessed); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 16px 20px; margin: 24px 0;
+    overflow-x: auto; white-space: pre;
+    box-shadow: inset 0 1px 3px rgba(60, 40, 20, 0.04);
+  }
+  .code-block .kw  { color: var(--accent); font-weight: 500; }
+  .code-block .com { color: var(--text-muted); font-style: italic; }
+  .code-block .str { color: var(--sage); }
+  .code-block .num { color: var(--gold); }
+  .code-block .fn  { color: var(--teal); }
+  .code-block .ty  { color: var(--rust); }
+  .code-block .hl  { background: var(--accent-dim); padding: 0 4px; border-radius: 2px; }
+
+  .code-caption {
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+    margin-top: -16px; margin-bottom: 28px; padding-left: 4px; letter-spacing: 0.3px;
+  }
+
+  .pullquote {
+    margin: 48px 0; padding: 0 0 0 28px;
+    border-left: 3px solid var(--accent);
+    font-style: italic; font-size: 24px; line-height: 1.4;
+    color: var(--text-bright);
+  }
+
+  .callout {
+    margin: 32px 0; padding: 18px 22px;
+    background: var(--teal-dim); border-left: 3px solid var(--teal);
+    border-radius: 0 8px 8px 0;
+    font-size: 17px; line-height: 1.55;
+  }
+  .callout--warn { background: var(--gold-dim); border-left-color: var(--gold); }
+  .callout--trap { background: var(--accent-dim); border-left-color: var(--accent); }
+  .callout__label {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    letter-spacing: 1.8px; text-transform: uppercase;
+    color: var(--teal); margin-bottom: 6px; display: block;
+  }
+  .callout--warn .callout__label { color: var(--gold); }
+  .callout--trap .callout__label { color: var(--accent); }
+  .callout p { margin-bottom: 0; }
+  .callout p + p { margin-top: 10px; }
+  .callout code {
+    font-family: var(--font-mono); font-size: 0.82em;
+    background: rgba(0,0,0,0.04); color: inherit;
+    padding: 1px 5px; border-radius: 3px;
+  }
+
+  .diagram {
+    margin: 40px 0; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 28px 24px; box-shadow: 0 1px 3px rgba(60, 40, 20, 0.04);
+  }
+  .diagram__title {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 4px;
+  }
+  .diagram__caption {
+    font-family: var(--font-body); font-size: 15px; font-style: italic;
+    color: var(--text-dim); margin-bottom: 22px; max-width: 580px;
+  }
+  .diagram svg { display: block; width: 100%; height: auto; max-width: 100%; }
+
+  .table-wrap {
+    margin: 32px 0; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  }
+  .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.data {
+    width: 100%; border-collapse: collapse;
+    font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  }
+  table.data th {
+    background: var(--surface-recessed);
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1.4px; color: var(--text-dim);
+    text-align: left; padding: 12px 16px;
+    border-bottom: 2px solid var(--border-bright); white-space: nowrap;
+  }
+  table.data td {
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+    vertical-align: top; color: var(--text);
+  }
+  table.data tr:last-child td { border-bottom: none; }
+  table.data tr:nth-child(even) td { background: var(--accent-dim); }
+  table.data td:first-child {
+    font-family: var(--font-mono); font-size: 13px;
+    color: var(--accent); font-weight: 500; white-space: nowrap;
+  }
+
+  .takeaways {
+    margin: 32px 0; padding: 24px 28px;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border); border-radius: 10px;
+    list-style: none;
+  }
+  .takeaways li {
+    font-size: 18px; padding: 10px 0 10px 22px;
+    border-bottom: 1px dashed var(--border);
+    position: relative;
+  }
+  .takeaways li:last-child { border-bottom: none; }
+  .takeaways li::before {
+    content: '·'; color: var(--accent); font-weight: 600;
+    font-family: var(--font-mono);
+    position: absolute; left: 4px; top: 10px;
+  }
+
+  .bridge {
+    margin-top: 80px; padding: 36px 32px;
+    background: var(--surface-elevated); border: 1px solid var(--border);
+    border-radius: 12px; border-left: 4px solid var(--accent);
+  }
+  .bridge__label {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 12px;
+  }
+  .bridge__title {
+    font-weight: 600; font-size: 24px;
+    color: var(--text-bright); margin-bottom: 10px;
+  }
+  .bridge p { color: var(--text-dim); margin-bottom: 0; font-size: 17px; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .hero, .toc, .section { animation: fadeUp 0.5s ease-out both; }
+  .toc { animation-delay: 0.05s; }
+  .section { animation-delay: 0.10s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .page { padding: 36px 20px 80px; }
+    .site-header { padding: 14px 20px; }
+    body { font-size: 17px; }
+    .lead { font-size: 19px; }
+    h2 { font-size: 26px; margin-top: 48px; }
+    h3 { font-size: 19px; }
+    .pullquote { font-size: 20px; padding-left: 18px; }
+    .code-block { font-size: 12px; padding: 14px 16px; }
+    .diagram { padding: 20px 14px; }
+  }
+
+  .diag-text { font-family: var(--font-mono); font-size: 11px; fill: var(--text); }
+  .diag-text--dim { fill: var(--text-dim); }
+  .diag-text--label { font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+  .diag-line { stroke: var(--border-bright); stroke-width: 1.2; fill: none; }
+  .diag-arrow { stroke: var(--text-dim); stroke-width: 1.2; fill: none; }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+
+<header class="site-header">
+  <span class="site-header__title">Python Concurrency Decoded</span>
+  <button class="theme-toggle" data-theme-toggle aria-label="Toggle theme">◐ Theme</button>
+</header>
+
+<article class="page prose">
+
+  <header class="hero">
+    <div class="hero__series">Sister post · companion to Parts 1–5</div>
+    <h1 class="hero__title">Measure the Loop, Not the Request</h1>
+    <p class="hero__subtitle">Average-latency dashboards will lie about asyncio. Here are the five metrics that don't — and how to export them from inside the loop.</p>
+    <div class="hero__meta">
+      <span>~14 min read</span>
+      <span>Python 3.11+</span>
+      <span>Assumes: Part 2</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <div class="toc__label">In this post</div>
+    <ol>
+      <li><a href="#s1">Why the average lies</a></li>
+      <li><a href="#s2">Loop stall — the metric the loop owes you</a></li>
+      <li><a href="#s3">The cheap built-in: debug mode</a></li>
+      <li><a href="#s4">The task census</a></li>
+      <li><a href="#s5">Live introspection — py-spy and aiomonitor</a></li>
+      <li><a href="#s6">The five metrics worth exporting</a></li>
+      <li><a href="#s7">Tracing across <code>await</code></a></li>
+      <li><a href="#s8">A short list to take with you</a></li>
+    </ol>
+  </nav>
+
+  <section class="section">
+
+    <p class="lead">If you have one dashboard for an asyncio service and it shows average request latency, you are flying blind. The cooperative trap from <a href="./gil-part-2.html">Part 2</a> hides exactly where averages cannot see: the request that landed on a frozen loop sees the entire freeze; every other request that day looks fine. p50 doesn't budge. p99 explodes. The graph that would tell you this is not the request-latency graph at all. It is a graph about the loop itself.</p>
+
+    <p>This post is a tool-piece — the smallest set of metrics, hooks, and live-introspection commands that will tell you the truth about an asyncio program in production. Everything in it is built on what we already covered in Part 2; the work here is in pointing the existing machinery at a dashboard.</p>
+
+    <div class="callout">
+      <span class="callout__label">From Go</span>
+      <p>Go's runtime ships with most of this for free. <code>runtime/trace</code>, <code>GODEBUG=schedtrace</code>, the scheduler-latency histograms in <code>runtime/metrics</code> — the equivalents of everything below are an env-var away. CPython gives you primitives and a debug flag. The dashboards you want are the ones you build.</p>
+    </div>
+
+    <h2 id="s1"><span class="num">§1</span>Why the average lies</h2>
+
+    <p>The shape of the trap is worth restating because every metric here is designed around it. A single asyncio loop serves all requests on one thread. If one handler does 200 ms of pure-Python work without an <code>await</code>, every other handler waits 200 ms — but only the handlers <em>unlucky enough to be in flight during the freeze</em> see those 200 ms as latency. The rest run through a normal loop and post normal numbers. With realistic traffic and one such freeze per minute, you have a service whose p50 latency is 3 ms, whose p99 is 4 ms, and whose p99.9 is 203 ms. The p99 column on your dashboard does not catch this because p99 is computed over a window of thousands of requests; one bad request per thousand never makes it into the top-1%.</p>
+
+    <p>The honest framing is to stop asking <em>"how long did requests take?"</em> and start asking <em>"how long was the loop unavailable?"</em> If the loop was unavailable for 200 ms, that is the bound on every request that wanted to make progress during that window — regardless of whether they ever ran. Loop availability is a property of the scheduler itself, not of any individual handler. We can measure it directly.</p>
+
+    <h2 id="s2"><span class="num">§2</span>Loop stall — the metric the loop owes you</h2>
+
+    <p>The cleanest definition I know is this: schedule a callback to fire every <em>N</em> milliseconds, and record the difference between when it asked to fire and when it actually did. That difference is <strong>loop stall</strong>. A healthy loop has stalls bounded by timer resolution noise — sub-millisecond on Linux, a couple of ms on macOS. A loop in the cooperative trap has periodic huge stalls. A loop slowly degrading under load has a long tail that grows.</p>
+
+    <p>The implementation is fifteen lines:</p>
+
+<pre class="code-block"><span class="kw">import</span> asyncio, time
+
+<span class="kw">class</span> <span class="ty">StallMonitor</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, interval=<span class="num">0.01</span>, on_stall=<span class="kw">None</span>):
+        self.interval = interval
+        self.on_stall = on_stall  <span class="com"># callback(stall_seconds)</span>
+        self._last = <span class="kw">None</span>
+
+    <span class="kw">async def</span> <span class="fn">run</span>(self):
+        loop = asyncio.<span class="fn">get_running_loop</span>()
+        self._last = loop.<span class="fn">time</span>()
+        <span class="kw">while True</span>:
+            <span class="kw">await</span> asyncio.<span class="fn">sleep</span>(self.interval)
+            now = loop.<span class="fn">time</span>()
+            stall = (now - self._last) - self.interval
+            <span class="kw">if</span> stall &gt; <span class="num">0</span> <span class="kw">and</span> self.on_stall:
+                self.<span class="fn">on_stall</span>(stall)
+            self._last = now</pre>
+    <p class="code-caption">Fifteen lines. Start it as a Task at program startup; it measures the loop from the inside.</p>
+
+    <p>Two subtleties. First, this measures the loop with itself — a fundamentally circular act that nonetheless works, because the canary task is just another callback in <code>_ready</code>. If the loop is frozen, the canary cannot fire; when the freeze ends, the canary fires <em>late</em> and reports the freeze duration. The canary cannot detect a freeze longer than its own runtime, but no asyncio mechanism can, by construction. Second, use <code>loop.time()</code> rather than <code>time.monotonic()</code> — they happen to be the same on Linux, but only the loop's own clock is guaranteed to match the timer wheel.</p>
+
+    <p>Wire it to your metrics library and you have the most important graph an asyncio service can have:</p>
+
+<pre class="code-block"><span class="kw">from</span> prometheus_client <span class="kw">import</span> Histogram
+
+stall_seconds = <span class="ty">Histogram</span>(
+    <span class="str">"asyncio_loop_stall_seconds"</span>,
+    <span class="str">"Difference between scheduled and actual fire time of a 10ms canary"</span>,
+    buckets=(<span class="num">0.001</span>, <span class="num">0.005</span>, <span class="num">0.01</span>, <span class="num">0.025</span>, <span class="num">0.05</span>, <span class="num">0.1</span>, <span class="num">0.25</span>, <span class="num">0.5</span>, <span class="num">1.0</span>, <span class="num">2.5</span>),
+)
+
+monitor = <span class="ty">StallMonitor</span>(interval=<span class="num">0.01</span>, on_stall=stall_seconds.<span class="fn">observe</span>)
+asyncio.<span class="fn">create_task</span>(monitor.<span class="fn">run</span>(), name=<span class="str">"stall-monitor"</span>)</pre>
+
+    <div class="diagram">
+      <div class="diagram__title">Diagram A · what stall actually measures</div>
+      <p class="diagram__caption">The canary asks to fire every 10 ms. While the loop is free, it fires on time. When a blocking call freezes the loop, the canary fires <em>late</em> — and the delay is exactly the freeze duration.</p>
+
+      <svg viewBox="0 0 680 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Timeline showing a canary callback firing on schedule, then firing late after a blocking call freezes the loop">
+        <defs>
+          <marker id="arrSA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" fill-opacity="0.6"/>
+          </marker>
+        </defs>
+
+        <!-- main loop timeline -->
+        <text x="20" y="32" class="diag-text diag-text--label" fill="var(--text-dim)">loop activity</text>
+        <line x1="80" y1="70" x2="640" y2="70" class="diag-line"/>
+
+        <!-- normal callbacks -->
+        <g>
+          <rect x="100" y="60" width="16" height="20" fill="var(--teal)" opacity="0.7"/>
+          <rect x="140" y="60" width="16" height="20" fill="var(--teal)" opacity="0.7"/>
+          <rect x="180" y="60" width="16" height="20" fill="var(--teal)" opacity="0.7"/>
+          <rect x="220" y="60" width="16" height="20" fill="var(--teal)" opacity="0.7"/>
+        </g>
+
+        <!-- the freeze -->
+        <rect x="260" y="56" width="180" height="28" fill="var(--accent)" opacity="0.85" rx="2"/>
+        <text x="350" y="74" text-anchor="middle" class="diag-text" fill="var(--surface)" font-weight="600">blocking CPU work — loop frozen</text>
+
+        <!-- after freeze -->
+        <g>
+          <rect x="460" y="60" width="16" height="20" fill="var(--teal)" opacity="0.7"/>
+          <rect x="500" y="60" width="16" height="20" fill="var(--teal)" opacity="0.7"/>
+          <rect x="540" y="60" width="16" height="20" fill="var(--teal)" opacity="0.7"/>
+          <rect x="580" y="60" width="16" height="20" fill="var(--teal)" opacity="0.7"/>
+        </g>
+
+        <!-- canary timeline -->
+        <text x="20" y="132" class="diag-text diag-text--label" fill="var(--accent)">canary (asked every 10 ms)</text>
+        <line x1="80" y1="170" x2="640" y2="170" class="diag-line"/>
+
+        <!-- expected fires (open circles) and actual (filled diamonds) -->
+        <g fill="none" stroke="var(--text-muted)" stroke-width="1">
+          <circle cx="100" cy="170" r="5"/>
+          <circle cx="140" cy="170" r="5"/>
+          <circle cx="180" cy="170" r="5"/>
+          <circle cx="220" cy="170" r="5"/>
+          <circle cx="260" cy="170" r="5"/>
+          <circle cx="300" cy="170" r="5"/>
+          <circle cx="340" cy="170" r="5"/>
+          <circle cx="380" cy="170" r="5"/>
+          <circle cx="420" cy="170" r="5"/>
+          <circle cx="460" cy="170" r="5"/>
+        </g>
+        <!-- actual fires -->
+        <g fill="var(--teal)">
+          <circle cx="100" cy="170" r="3"/>
+          <circle cx="140" cy="170" r="3"/>
+          <circle cx="180" cy="170" r="3"/>
+          <circle cx="220" cy="170" r="3"/>
+        </g>
+        <!-- the late one -->
+        <circle cx="460" cy="170" r="5" fill="var(--accent)"/>
+        <path d="M 250 170 L 460 170" stroke="var(--accent)" stroke-width="1.4" stroke-dasharray="3 3" fill="none"/>
+        <text x="355" y="190" text-anchor="middle" class="diag-text" fill="var(--accent)" font-weight="600">stall observed = 200 ms</text>
+
+        <!-- caption -->
+        <text x="80" y="220" class="diag-text diag-text--dim">○ scheduled  ●&nbsp;fired on time  &nbsp;<tspan fill="var(--accent)">●&nbsp;fired late — observed stall</tspan></text>
+      </svg>
+    </div>
+
+    <p>This single graph is worth more than any p99 chart of request latency. It tells you whether the loop itself is healthy, independent of how much traffic you are serving. Alarm on the upper-tail buckets — anything above <code>0.05</code> in normal operation is a problem worth a page.</p>
+
+    <h2 id="s3"><span class="num">§3</span>The cheap built-in: debug mode</h2>
+
+    <p>Before you ship anything custom, ask asyncio itself. The loop has a debug mode that logs callbacks taking longer than a configurable threshold. It costs almost nothing to enable and catches a useful subset of stalls without instrumentation:</p>
+
+<pre class="code-block"><span class="com"># Either of these works:</span>
+asyncio.<span class="fn">run</span>(<span class="fn">main</span>(), debug=<span class="kw">True</span>)
+<span class="com"># or set PYTHONASYNCIODEBUG=1 in the environment.</span>
+
+<span class="com"># Tune the threshold (default is 100 ms — usually too lenient):</span>
+loop = asyncio.<span class="fn">get_running_loop</span>()
+loop.slow_callback_duration = <span class="num">0.02</span>     <span class="com"># 20 ms</span></pre>
+
+    <p>What this actually does is in <code>Lib/asyncio/base_events.py</code> — every callback invoked from <code>_run_once</code> is timed, and if it exceeds <code>slow_callback_duration</code>, the loop logs a warning at <code>WARNING</code> level with the callback's source location and duration:</p>
+
+<pre class="code-block">Executing &lt;Task pending name='handler-7' coro=&lt;handle() running at app.py:42&gt;
+   wait_for=&lt;Future pending&gt;&gt; took <span class="num">0.187</span> seconds</pre>
+
+    <p>Two warnings about the warnings. First, the loop times each <em>callback</em>, not each <em>task</em>. A task that yields cooperatively spends one tick per callback invocation; only the per-tick duration is measured. This is what you want — it catches synchronous CPU work inside an <code>async def</code>, which is precisely the trap from §1. Second, debug mode also enables extra bookkeeping: the loop tracks Task creation sites, slows down some operations to validate them, and reports tasks that are destroyed while still pending. Run it everywhere in development; consider it for staging; in production, lower <code>slow_callback_duration</code> rather than disabling it outright.</p>
+
+    <div class="callout callout--warn">
+      <span class="callout__label">Trap</span>
+      <p>The slow-callback warning fires after the callback has already blocked the loop. It is a postmortem signal, not a prevention. By the time you see the log line, the damage is done. Use it to find the offending code paths in pre-prod; rely on the stall histogram from §2 to alert in prod.</p>
+    </div>
+
+    <h2 id="s4"><span class="num">§4</span>The task census</h2>
+
+    <p>The second class of bug asyncio loves to grow is <em>task leaks</em>. A <code>create_task</code> whose return value is dropped on the floor will run to completion — and if it happens to await something that never resolves (a hung HTTP call, a closed Redis connection, a Future no one will <code>set_result</code> on), it sits in memory holding whatever it captured in its closure forever. With enough traffic and one such leak per request, you have a memory profile that looks like a healthy stairstep until OOM.</p>
+
+    <p>The introspection primitive is <code>asyncio.all_tasks()</code>. It returns every task currently alive on the loop. Two things make it usable: naming tasks at creation time, and dumping the set on a signal.</p>
+
+<pre class="code-block"><span class="com"># Always name tasks. The default name is "Task-N" which tells you nothing.</span>
+asyncio.<span class="fn">create_task</span>(<span class="fn">handle</span>(req), name=<span class="kw">f</span><span class="str">"handle:{req.id}"</span>)
+
+<span class="kw">import</span> signal, sys
+
+<span class="kw">def</span> <span class="fn">dump_tasks</span>(*_):
+    <span class="kw">for</span> t <span class="kw">in</span> asyncio.<span class="fn">all_tasks</span>():
+        coro = t.<span class="fn">get_coro</span>()
+        <span class="fn">print</span>(<span class="kw">f</span><span class="str">"{t.get_name():&lt;30} {coro.__qualname__:&lt;30} "</span>
+              <span class="kw">f</span><span class="str">"{'done' if t.done() else 'pending'}"</span>, file=sys.stderr)
+
+signal.<span class="fn">signal</span>(signal.SIGUSR1, dump_tasks)
+<span class="com"># kill -USR1 &lt;pid&gt; → instant snapshot of every live task</span></pre>
+    <p class="code-caption">Naming costs nothing. The SIGUSR1 handler turns a black box into a printable list.</p>
+
+    <p>Wire <code>len(asyncio.all_tasks())</code> to a gauge and alarm on growth that does not match traffic. A task count that climbs monotonically while requests-per-second is flat is a leak — find the unnamed tasks and the call sites that spawned them.</p>
+
+    <div class="callout">
+      <span class="callout__label">Sidebar</span>
+      <p>Two messages from the warnings module are worth recognising on sight. <code>RuntimeWarning: coroutine '...' was never awaited</code> means you called an <code>async def</code> and threw the coroutine away — body never ran. <code>Task was destroyed but it is pending</code> means a task you created was garbage-collected while it still had work to do — usually because nobody kept a reference. The first is benign; the second is a leak you got lucky about (the GC reaped the task before it could leak much). Both deserve a fix at the call site.</p>
+    </div>
+
+    <h2 id="s5"><span class="num">§5</span>Live introspection — py-spy and aiomonitor</h2>
+
+    <p>Sometimes the metric tells you something is wrong but the cause is not on any code path you instrumented. For these moments you want to attach to the running process and look around. Two tools do this well, in complementary ways.</p>
+
+    <h3>py-spy</h3>
+
+    <p><code>py-spy</code> reads another process's memory and reconstructs Python stacks without injecting anything. The async-aware mode walks every live coroutine frame:</p>
+
+<pre class="code-block">$ py-spy dump --pid 12345
+
+Thread <span class="num">12345</span> (active+gil): "MainThread"
+    _run_once (asyncio/base_events.py:<span class="num">1925</span>)
+    run_forever (asyncio/base_events.py:<span class="num">607</span>)
+    run_until_complete (asyncio/base_events.py:<span class="num">640</span>)
+
+Task: handle:req-abc123  (pending)
+    handle (app.py:<span class="num">42</span>)
+    fetch_user (db.py:<span class="num">88</span>)
+    _wait_for_response (asyncpg/connection.py:<span class="num">1455</span>)
+
+Task: handle:req-def456  (pending)
+    handle (app.py:<span class="num">42</span>)
+    expensive_parse (parsing.py:<span class="num">114</span>)        <span class="com"># &lt;-- the freeze culprit</span>
+    json.loads (json/__init__.py:<span class="num">346</span>)</pre>
+    <p class="code-caption">One snapshot of every task, including the call stack inside the coroutine. Run it during a stall and the culprit's stack tells you what is blocking.</p>
+
+    <p>It is also non-invasive — no asyncio cooperation needed, no SDK to install in the target process, no performance impact while not in use. The standard incident-response loop is <em>stall histogram alerts → SSH to host → <code>py-spy dump</code> on the pid → fix at the named function</em>. Add <code>py-spy record</code> for a flamegraph if the cause is distributed across many short calls rather than one long one.</p>
+
+    <h3>aiomonitor</h3>
+
+    <p>Where <code>py-spy</code> is read-only and external, <a href="https://github.com/aio-libs/aiomonitor"><code>aiomonitor</code></a> is read/write and internal. You instantiate it inside your program and it opens a telnet/HTTP console on a port. From the console you can list tasks, see their stacks, cancel specific tasks, and even drop into an interactive Python shell <em>on the running loop</em>.</p>
+
+<pre class="code-block"><span class="kw">import</span> aiomonitor
+
+<span class="kw">async def</span> <span class="fn">main</span>():
+    <span class="kw">with</span> aiomonitor.<span class="fn">start_monitor</span>(loop=asyncio.<span class="fn">get_running_loop</span>(), port=<span class="num">50101</span>):
+        <span class="kw">await</span> <span class="fn">run_app</span>()
+
+<span class="com"># Then, from a shell on the same host:</span>
+<span class="com">#   $ telnet localhost 50101</span>
+<span class="com">#   monitor &gt;&gt;&gt; ps            # list tasks</span>
+<span class="com">#   monitor &gt;&gt;&gt; where 7       # stack of task 7</span>
+<span class="com">#   monitor &gt;&gt;&gt; cancel 7      # cancel it</span>
+<span class="com">#   monitor &gt;&gt;&gt; console       # drop into a REPL on the loop</span></pre>
+
+    <p>It earns its keep for long-running daemons where you want to poke at state without restarting. It pays for itself the first time you cancel a wedged background task without taking the process down. The cost is the surface area: a console on a port is a thing to firewall and authenticate; the README is honest about this. In containerised environments, bind it to localhost and exec into the container.</p>
+
+    <h2 id="s6"><span class="num">§6</span>The five metrics worth exporting</h2>
+
+    <p>If a Prometheus or OpenTelemetry exporter is the right level of abstraction for your stack, the metric set below is the minimum that meaningfully describes an asyncio service. Nothing in it is novel; the value is the small fixed list. Resist adding more until something fails in a way these cannot explain.</p>
+
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table class="data">
+          <thead>
+            <tr>
+              <th>metric</th>
+              <th>type</th>
+              <th>what it tells you</th>
+              <th>alarm shape</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>asyncio_loop_stall_seconds</td>
+              <td>histogram</td>
+              <td>The §2 canary. Upper buckets are blocking-call freezes.</td>
+              <td>p99.9 &gt; 50 ms sustained</td>
+            </tr>
+            <tr>
+              <td>asyncio_tasks_total</td>
+              <td>gauge</td>
+              <td><code>len(all_tasks())</code>. Growth uncorrelated with RPS is a leak.</td>
+              <td>derivative &gt; 0 over a long window with flat RPS</td>
+            </tr>
+            <tr>
+              <td>asyncio_executor_queue_depth</td>
+              <td>gauge</td>
+              <td>How many <code>run_in_executor</code> calls are waiting for a worker.</td>
+              <td>&gt; 0 sustained — pool is undersized</td>
+            </tr>
+            <tr>
+              <td>asyncpg_pool_acquire_seconds</td>
+              <td>histogram</td>
+              <td>Time spent waiting for a free DB connection.</td>
+              <td>p99 &gt; one-tenth of your request budget</td>
+            </tr>
+            <tr>
+              <td>redis_pool_in_use</td>
+              <td>gauge</td>
+              <td>Connections currently checked out. Saturation means waits.</td>
+              <td>&gt; 90% of pool size sustained</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <p>The first one is the canary from §2. The second is one line. The third requires reading into your executor — <code>ThreadPoolExecutor</code> doesn't expose queue depth directly, so wrap it or sample its internal <code>_work_queue.qsize()</code>. The last two are framework-specific but the pattern generalises to any pooled resource: every pool has an acquire time and an in-use count; export both.</p>
+
+    <p>Two metrics conspicuously absent: request latency and request count. Export those too — but as <em>application metrics</em>, not asyncio metrics. The point of this set is that it diagnoses the loop independently of what is running on it. If the loop is healthy and requests are slow, the bug is elsewhere (a slow database, a chatty downstream). If the loop is unhealthy, no amount of application-level optimisation will help.</p>
+
+    <div class="pullquote">
+      Loop stall is a property of the scheduler, not of any handler. Measure the scheduler.
+    </div>
+
+    <h2 id="s7"><span class="num">§7</span>Tracing across <code>await</code></h2>
+
+    <p>The last piece is distributed tracing, which interacts with asyncio in one specific and important way: the trace context has to survive every <code>await</code>. The answer is <code>contextvars</code>, the threading-local-but-for-coroutines abstraction added in Python 3.7. When the loop schedules a task to run, it captures the current context (with <code>copy_context()</code>) and restores it when the task resumes. This means a <code>ContextVar</code> set in the request handler is visible inside every coroutine that handler awaits, transitively, all the way down — until someone explicitly resets it or the task ends.</p>
+
+    <p>OpenTelemetry's Python SDK uses this directly. <code>opentelemetry.context</code> is a thin layer over <code>contextvars.ContextVar</code>, which means trace and span IDs propagate across <code>await</code> for free, without any per-library instrumentation:</p>
+
+<pre class="code-block"><span class="kw">from</span> opentelemetry <span class="kw">import</span> trace
+
+tracer = trace.<span class="fn">get_tracer</span>(__name__)
+
+<span class="kw">async def</span> <span class="fn">handle</span>(req):
+    <span class="kw">with</span> tracer.<span class="fn">start_as_current_span</span>(<span class="str">"handle"</span>):
+        user = <span class="kw">await</span> <span class="fn">fetch_user</span>(req.user_id)    <span class="com"># span propagates here</span>
+        <span class="kw">return await</span> <span class="fn">render</span>(user)            <span class="com"># and here</span></pre>
+
+    <p>The one place this breaks is when you cross out of the loop — <code>run_in_executor</code>, a raw thread, a process pool. The worker thread does not share contextvars with the loop thread, so the trace context is lost unless you propagate it yourself. OTel's auto-instrumentation handles this for the common stdlib executor, but if you spawn threads directly, you need <code>contextvars.copy_context().run(fn, ...)</code> on the worker side.</p>
+
+    <div class="callout">
+      <span class="callout__label">Cross-context drift</span>
+      <p>The asymmetry is worth internalising. Within the loop, contextvars propagate across <code>await</code> automatically — the loop captures and restores context on every Task switch. Across the loop boundary (executor, subprocess, message queue) you are on your own. Anything you want preserved must be serialised into the work item or copied into the worker thread by hand. Almost every "we lost the trace ID" production mystery is one of these boundary crossings, unguarded.</p>
+    </div>
+
+    <h2 id="s8"><span class="num">§8</span>A short list to take with you</h2>
+
+    <ul class="takeaways">
+      <li>Average request latency lies about asyncio. Measure <em>loop stall</em> — the lateness of a 10 ms canary — and graph the upper buckets.</li>
+      <li>Enable <code>debug=True</code> in dev and staging; lower <code>slow_callback_duration</code> to 20 ms; treat the warnings as a queue of bugs.</li>
+      <li>Name every task. Wire <code>len(asyncio.all_tasks())</code> to a gauge. Install a SIGUSR1 handler that dumps the task table.</li>
+      <li>Keep <code>py-spy</code> on every host. <code>py-spy dump --pid X</code> during a stall almost always names the offender.</li>
+      <li>Five metrics: stall histogram, task count, executor queue depth, pool acquire times, pool in-use. Everything else is conditional.</li>
+      <li><code>contextvars</code> propagate across <code>await</code> for free, across thread/process boundaries for nothing. Trace IDs follow the same rule.</li>
+    </ul>
+
+    <div class="bridge">
+      <div class="bridge__label">Read alongside</div>
+      <div class="bridge__title">Part 2 — The Loop is the Trick</div>
+      <p>Every metric above is a thin wrapper over machinery from Part 2: the cooperative trap motivates the stall canary; <code>_run_once</code> is what <code>slow_callback_duration</code> times; the Task spine is what <code>all_tasks()</code> walks. If a metric here makes no sense, the corresponding paragraph in Part 2 will fix it. If a paragraph in Part 2 felt abstract, the metric here is what it looks like in production.</p>
+    </div>
+
+  </section>
+
+</article>
+
+<script>
+  (function () {
+    const root = document.documentElement;
+    const saved = localStorage.getItem('theme');
+    if (saved) {
+      root.setAttribute('data-theme', saved);
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      root.setAttribute('data-theme', 'dark');
+    }
+    document.querySelectorAll('[data-theme-toggle]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        root.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+      });
+    });
+  })();
+
+  (function () {
+    const bar = document.getElementById('progress');
+    if (!bar) return;
+    let raf = 0;
+    const update = () => {
+      const doc = document.documentElement;
+      const scrolled = doc.scrollTop || document.body.scrollTop;
+      const height = doc.scrollHeight - doc.clientHeight;
+      bar.style.width = height > 0 ? (scrolled / height * 100) + '%' : '0%';
+      raf = 0;
+    };
+    window.addEventListener('scroll', () => {
+      if (!raf) raf = requestAnimationFrame(update);
+    }, { passive: true });
+    update();
+  })();
+</script>
+
+</body>
+</html>

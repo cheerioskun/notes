@@ -284,6 +284,12 @@
     margin-top: -16px; margin-bottom: 28px; padding-left: 4px; letter-spacing: 0.3px;
   }
 
+  .footnote {
+    font-size: 14.5px; color: var(--text-dim); line-height: 1.6;
+    padding-left: 16px; border-left: 2px solid var(--border); margin: 18px 0 28px;
+  }
+  .footnote sup { color: var(--accent); margin-right: 4px; }
+
   /* PULL QUOTE */
   .pullquote {
     margin: 48px 0; padding: 0 0 0 28px;
@@ -369,14 +375,15 @@
     list-style: none;
   }
   .takeaways li {
-    font-size: 18px; padding: 10px 0;
+    font-size: 18px; padding: 10px 0 10px 22px;
     border-bottom: 1px dashed var(--border);
-    display: flex; gap: 14px;
+    position: relative;
   }
   .takeaways li:last-child { border-bottom: none; }
   .takeaways li::before {
     content: '·'; color: var(--accent); font-weight: 600;
-    font-family: var(--font-mono); flex-shrink: 0;
+    font-family: var(--font-mono);
+    position: absolute; left: 4px; top: 10px;
   }
 
   /* BRIDGE */
@@ -475,7 +482,7 @@
 
   <section class="section">
 
-    <p class="lead">In Part 1 we established that the GIL releases on I/O syscalls, which means CPython threads can already do I/O concurrency. So why does asyncio exist? Take ten thousand idle HTTP connections. With threads, that is ten thousand kernel-scheduled stacks; even at lazy-allocated 8&nbsp;MB each you are courting tens of gigabytes of virtual address space and a context-switch tax that scales with how often your threads wake up to do nothing. With asyncio, the same ten thousand connections are ten thousand small Python objects sitting on a single OS thread, and the kernel is asked exactly one question: "of these file descriptors, which are ready?"</p>
+    <p class="lead">In Part 1 we established that the GIL releases on I/O syscalls, which means CPython threads can already do I/O concurrency. So why does asyncio exist? Take ten thousand idle HTTP connections. With threads, that is ten thousand kernel-scheduled stacks; the 8&nbsp;MB-per-thread number people quote is a pthread default, lazily allocated, and configurable via <code>threading.stack_size()</code> — so the tens of gigabytes of virtual address space is a number a 64-bit kernel shrugs off. The binding cost is the scheduler. Ten thousand mostly-idle threads means ten thousand wakeups competing for one GIL, paid in context switches and cache-line traffic on a mutex that only one of them can hold. With asyncio, the same ten thousand connections are ten thousand small Python objects sitting on a single OS thread, and the kernel is asked exactly one question: "of these file descriptors, which are ready?"</p>
 
     <p>That is the trade. asyncio swaps preemption for memory, and kernel scheduling for a tighter inner loop. Everything else in this post is mechanism — the specific shape of the scheduler Python ships in <code>Lib/asyncio/</code>. Once you can see the mechanism, the famous gotchas stop being mystical. They become predictable consequences of the design.</p>
 
@@ -752,7 +759,9 @@ coro = parent()
       </svg>
     </div>
 
-    <p>Two details worth lingering on. First, if <code>_ready</code> has callbacks in it already, <code>timeout</code> is zero — the selector returns immediately without sleeping. The loop never blocks if there is work to do. Second, the snapshot in step 5 matters: callbacks that schedule new callbacks during this iteration do not get to run in the same turn. They wait for the next one. This bounds the work per turn and prevents one chatty callback from starving the selector.</p>
+    <p>Three details worth lingering on. First, if <code>_ready</code> has callbacks in it already, <code>timeout</code> is zero — the selector returns immediately without sleeping. The loop never blocks if there is work to do. Second, the snapshot in step 5 matters: callbacks that schedule new callbacks during this iteration do not get to run in the same turn. They wait for the next one. This bounds the work per turn and prevents one chatty callback from starving the selector.</p>
+
+    <p>Third — the inverse of the first — when both queues are empty, <code>timeout</code> is <code>None</code> and the selector sleeps forever. This is not a bug; it is the point. In a single-threaded loop, the only things that can produce new work are (1) the kernel telling us an fd is ready, and (2) one of our own timers firing. The kernel is watching the fds for us, so we are not missing I/O by being asleep. And there are no timers, by assumption. There is <em>nothing else</em> — no other thread can call <code>loop.call_soon</code> because there are no other threads. Sleeping forever is safe by construction. The <code>timeout</code> argument exists at all because of case (2): if a timer is due in 0.4 seconds, the selector needs to wake up then even if no I/O arrives. Take away timers and you would never pass a timeout to <code>epoll_wait</code>. (The cross-thread case — <code>call_soon_threadsafe</code>, signal handlers, <code>run_in_executor</code> — is the subject of <a href="./asyncio-sidequests.html">Part 3 §1</a>; the self-pipe is how the loop is woken when "no other thread" stops being true.)</p>
 
     <h2 id="s5"><span class="num">§5</span>Future, Coroutine, Task — three things constantly confused</h2>
 
@@ -898,7 +907,7 @@ coro = parent()
     )
     <span class="kw">return</span> {<span class="str">"ok"</span>: <span class="kw">True</span>}</pre>
 
-    <p><code>run_in_executor</code> punts the CPU work to a thread pool and returns a Future the loop can <code>await</code>. The thread runs the CPU work (paying GIL contention — pbkdf2 releases it, so this is fine; pure Python wouldn't be), and when it's done, the Future resolves and the coroutine resumes. The loop keeps cycling the whole time.</p>
+    <p><code>run_in_executor</code> punts the work to a thread pool and returns a Future the loop can <code>await</code>. The worker thread runs the function; when it returns, the Future resolves and the coroutine resumes. The loop keeps cycling the whole time. This works <em>because</em> <code>pbkdf2_hmac</code> is a C routine that releases the GIL for the duration of the hash — the worker thread is running native code with no interpreter to lock, so the loop thread is free to take the GIL and process other requests. If you replace <code>pbkdf2</code> with the equivalent in pure Python, this fix stops working. The next two paragraphs are about that case, because it is the one every server author runs into and the one the diagram above quietly assumes away.</p>
 
     <div class="diagram">
       <div class="diagram__title">Diagram C · the trap, and the way out</div>
@@ -965,6 +974,28 @@ coro = parent()
       </svg>
     </div>
 
+    <p>Split the CPU work into two camps. <strong>C code that releases the GIL</strong>: hash functions, compression, numpy array ops, image codecs, most database drivers' parsing — they call <code>Py_BEGIN_ALLOW_THREADS</code> before the long compute and reacquire on the way out. For these, <code>run_in_executor</code> with the default thread pool is the right answer. The worker thread holds no GIL while computing; the loop thread is unimpeded. <strong>Pure-Python CPU work</strong>: a parser written in Python, a business-logic loop, a hand-rolled compression routine, anything you would profile with <code>cProfile</code> and see Python frames at the top. The interpreter holds the GIL the whole time it is executing bytecode. Putting it on a worker thread does not give the loop air — the worker thread takes the GIL, runs for about 5&nbsp;ms, the interpreter forces a handoff, the loop thread gets a brief slice, hands back, and so on. The loop is not <em>frozen</em>, but it is sharing one CPU's worth of execution with the worker, contending on a mutex on every switch. Latency for the served requests goes up; throughput collapses. You have moved the problem, not solved it.</p>
+
+    <p>The fix for pure-Python CPU work is to leave the process entirely:</p>
+
+<pre class="code-block"><span class="kw">from</span> concurrent.futures <span class="kw">import</span> ProcessPoolExecutor
+
+executor = <span class="fn">ProcessPoolExecutor</span>(max_workers=<span class="num">4</span>)  <span class="com"># at startup, long-lived</span>
+
+<span class="kw">async def</span> <span class="fn">parse</span>(request):
+    loop = asyncio.<span class="fn">get_running_loop</span>()
+    result = <span class="kw">await</span> loop.<span class="fn">run_in_executor</span>(executor, expensive_pure_python_parse, payload)
+    <span class="kw">return</span> result</pre>
+
+    <p>A separate process has its own interpreter and its own GIL. Two processes run pure-Python bytecode in actual parallel. The price is paid at the boundary: arguments and return values are pickled, written through a pipe, unpickled on the other side. For small inputs and outputs this is cheap; for a 50&nbsp;MB payload it is a copy and a serialise. Workers are long-lived — you do not spawn one per request, you keep a pool and submit to it. On Linux the workers are forked (cheap, copy-on-write), on macOS and Windows they are spawned (slower, fresh import of your code). And there is no shared state: globals, connection pools, in-memory caches in the parent do not exist in the worker. Anything the worker needs, you send.</p>
+
+    <div class="callout callout--trap">
+      <span class="callout__label">Trap</span>
+      <p>FastAPI's sync-handler convenience makes this worse, not better. A <code>def</code> handler runs in anyio's thread pool — forty slots by default. If the handler does pure-Python CPU work, "forty concurrent requests" means forty threads contending on one GIL, doing roughly one CPU's worth of work between them, plus context-switch tax. The dashboard says the pool is healthy; the latency dashboard says it is not. The threadpool is the right tool for sync <em>I/O</em>-bound libraries (<code>psycopg2</code>, <code>requests</code> — they release the GIL on the socket call). It is the wrong tool for CPU work. Move CPU to a <code>ProcessPoolExecutor</code>, or, for anything heavier than a few hundred milliseconds, off the request path entirely into a job queue (Celery, RQ, dramatiq) so the web process does not own the work at all.</p>
+    </div>
+
+    <p>The medium-term answer is free-threaded Python — PEP 703, the <code>python3.13t</code> build, where the GIL is gone and pure-Python threads finally run in parallel. When that lands in production the calculus changes: <code>ProcessPoolExecutor</code> becomes a tool for isolation rather than parallelism, and pure-Python CPU work in a thread pool becomes a real option. That world is not here yet. The ecosystem (C extensions, refcounting assumptions, package wheels) is still catching up. For code you write today: C extensions that release the GIL go to the thread pool, pure-Python CPU work goes to a process pool or out-of-process worker, and the question to ask before either is "does this need to be in the request path at all?"</p>
+
     <div class="callout">
       <span class="callout__label">From Go</span>
       <p>Go has it easier here, in a narrow sense. Since Go 1.14 the runtime preempts goroutines mid-CPU-burn — it sends <code>SIGURG</code> to the OS thread, and the signal handler reschedules the goroutine. CPython has no equivalent. The bytecode interpreter cannot be safely interrupted mid-instruction without breaking refcount invariants (see Part 1), and the event loop has no signal of its own. If your coroutine doesn't <code>await</code>, the loop cannot make it.</p>
@@ -1012,7 +1043,7 @@ coro = parent()
       <li>One thread, one loop, one <code>epoll_wait</code>. That is the whole concurrency model.</li>
       <li><code>await</code> yields. It does not wait. The waiting is the loop's job.</li>
       <li>Anything that doesn't <code>await</code> blocks every other task on the loop. There is no preemption.</li>
-      <li><code>run_in_executor</code> for CPU work; <code>TaskGroup</code> for fan-out; <code>asyncio.timeout</code> for deadlines.</li>
+      <li><code>run_in_executor</code> with a thread pool for GIL-releasing C work; a process pool for pure-Python CPU work. <code>TaskGroup</code> for fan-out; <code>asyncio.timeout</code> for deadlines.</li>
       <li>The loop is fifty lines. Open <code>Lib/asyncio/base_events.py</code> and read <code>_run_once</code>.</li>
     </ul>
 
