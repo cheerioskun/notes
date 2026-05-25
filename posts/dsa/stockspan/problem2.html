@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Reign — Level 2</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main>
+    <header>
+      <p class="kicker">Level 2</p>
+      <h1>Reign</h1>
+    </header>
+
+    <h2>Statement</h2>
+    <p>
+      For each day <code>i</code>, define <code>reign[i]</code> as the length of the
+      longest contiguous subarray <code>price[l..r]</code> such that
+      <code>l ≤ i ≤ r</code> and <code>price[i]</code> is the
+      <em>strict</em> maximum of <code>price[l..r]</code> — that is,
+      <code>price[j] &lt; price[i]</code> for every <code>j</code> in
+      <code>[l, r]</code> with <code>j ≠ i</code>.
+    </p>
+    <p>
+      If no such extension exists, the subarray is simply <code>{i}</code> itself and
+      <code>reign[i] = 1</code>.
+    </p>
+    <p>
+      Output <code>reign[i]</code> for every <code>i</code>.
+    </p>
+
+    <h2>Input</h2>
+    <ul>
+      <li>The first line contains an integer <code>T</code> — the number of test cases.</li>
+      <li>For each test case:
+        <ul>
+          <li>A line with a single integer <code>n</code>.</li>
+          <li>A line with <code>n</code> space-separated integers <code>price[0] … price[n-1]</code>. Prices may repeat.</li>
+        </ul>
+      </li>
+    </ul>
+
+    <h2>Output</h2>
+    <p>
+      For each test case, print a single line containing <code>n</code> space-separated
+      integers <code>reign[0] … reign[n-1]</code>.
+    </p>
+
+    <h2>Constraints</h2>
+    <ul>
+      <li><code>1 ≤ T ≤ 10</code></li>
+      <li><code>1 ≤ n ≤ 10<sup>5</sup></code></li>
+      <li><code>0 ≤ price[i] ≤ 10<sup>9</sup></code></li>
+    </ul>
+
+    <h2>Example</h2>
+    <div class="example-grid">
+      <div>
+        <div class="label">Input</div>
+        <div class="block"><pre>2
+7
+3 1 4 1 5 9 2
+5
+2 2 2 2 2</pre></div>
+      </div>
+      <div>
+        <div class="label">Output</div>
+        <div class="block"><pre>2 1 4 1 5 7 1
+1 1 1 1 1</pre></div>
+      </div>
+    </div>
+
+    <footer>
+      <a href="problem1.html">← Prev</a>
+      <a href="problem3.html">Next →</a>
+    </footer>
+  </main>
+  <script src="copy.js"></script>
+</body>
+</html>

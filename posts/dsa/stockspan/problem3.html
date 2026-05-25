@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Operations — Round 1</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main>
+    <header>
+      <p class="kicker">SRE / Operations</p>
+      <h1>Two Boxes, Two Problems</h1>
+    </header>
+
+    <p>
+      Two short scenarios. No need to type — talk through what you'd do, what
+      commands you'd reach for, and how you'd interpret what comes back.
+    </p>
+
+    <h2>Scenario 1 — What's on port 3000?</h2>
+    <p>
+      You've SSH'd into a Linux server. Something is listening on
+      <code>:3000</code>, but you don't know which process, which binary, or
+      which user owns it.
+    </p>
+    <p>
+      How would you find out? Walk through the tools you'd use and what each
+      one tells you. If a first attempt comes back empty, what would you try
+      next?
+    </p>
+
+    <h2>Scenario 2 — curl hangs</h2>
+    <p>
+      You're on a server. You run:
+    </p>
+    <div class="block"><pre>curl https://api.internal.example.com/health</pre></div>
+    <p>
+      It just hangs. No output, no error. Eventually it times out.
+    </p>
+    <p>
+      Walk through how you'd narrow down where the failure is. There are
+      several layers between you and a healthy response — your job is to
+      figure out which one is broken, in an order that doesn't waste time.
+    </p>
+
+    <footer>
+      <a href="problem2.html">← Prev</a>
+      <span class="spacer">3 / 3</span>
+    </footer>
+  </main>
+  <script src="copy.js"></script>
+</body>
+</html>

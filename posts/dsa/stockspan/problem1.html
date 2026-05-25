@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stock Span — Level 1</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main>
+    <header>
+      <p class="kicker">Level 1</p>
+      <h1>Stock Span</h1>
+    </header>
+
+    <h2>Statement</h2>
+    <p>
+      You are given the daily closing prices of a stock for <code>n</code> consecutive
+      days. For each day <code>i</code>, compute the <em>span</em> — the number of
+      consecutive days ending at day <code>i</code> (including day <code>i</code>
+      itself) on which the price was less than or equal to the price on day
+      <code>i</code>.
+    </p>
+    <p>
+      Formally, the span on day <code>i</code> is the largest integer <code>k</code>
+      such that <code>price[i-k+1], price[i-k+2], …, price[i]</code> are all
+      <code>≤ price[i]</code>.
+    </p>
+
+    <h2>Input</h2>
+    <ul>
+      <li>The first line contains an integer <code>T</code> — the number of test cases.</li>
+      <li>For each test case:
+        <ul>
+          <li>A line with a single integer <code>n</code>.</li>
+          <li>A line with <code>n</code> space-separated integers <code>price[0] … price[n-1]</code>.</li>
+        </ul>
+      </li>
+    </ul>
+
+    <h2>Output</h2>
+    <p>
+      For each test case, print a single line containing <code>n</code> space-separated
+      integers: the span for each day in order.
+    </p>
+
+    <h2>Constraints</h2>
+    <ul>
+      <li><code>1 ≤ T ≤ 10</code></li>
+      <li><code>1 ≤ n ≤ 10<sup>5</sup></code></li>
+      <li><code>0 ≤ price[i] ≤ 10<sup>5</sup></code></li>
+    </ul>
+
+    <h2>Example</h2>
+    <div class="example-grid">
+      <div>
+        <div class="label">Input</div>
+        <div class="block"><pre>3
+7
+100 80 60 70 60 75 85
+5
+1 2 3 4 5
+1
+42</pre></div>
+      </div>
+      <div>
+        <div class="label">Output</div>
+        <div class="block"><pre>1 1 1 2 1 4 6
+1 2 3 4 5
+1</pre></div>
+      </div>
+    </div>
+
+    <footer>
+      <span class="spacer">1 / 3</span>
+      <a href="problem2.html">Next →</a>
+    </footer>
+  </main>
+  <script src="copy.js"></script>
+</body>
+</html>
