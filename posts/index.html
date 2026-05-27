@@ -5,34 +5,83 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>notes</title>
 <style>
-  :root { color-scheme: light dark; }
-  body { font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, sans-serif; max-width: 42rem; margin: 4rem auto; padding: 0 1.25rem; }
+  :root {
+    color-scheme: light dark;
+    --accent: #c4623d;
+  }
+  body {
+    font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, sans-serif;
+    max-width: 44rem; margin: 4rem auto; padding: 0 1.25rem;
+  }
   h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
-  h2 { font-size: 1rem; text-transform: uppercase; letter-spacing: .08em; opacity: .6; margin: 2rem 0 .5rem; font-weight: 600; }
+  h2 {
+    font-size: .8rem; text-transform: uppercase; letter-spacing: .1em;
+    opacity: .55; margin: 2.5rem 0 .75rem; font-weight: 600;
+  }
+  p.sub { opacity: .6; margin: 0 0 1rem; }
   ul { list-style: none; padding: 0; margin: 0; }
-  li { padding: .25rem 0; }
-  a { color: inherit; text-decoration: none; border-bottom: 1px solid currentColor; }
-  a:hover { opacity: .7; }
-  p.sub { opacity: .6; margin: 0 0 2rem; }
+  li { padding: .55rem 0; border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent); }
+  li:first-child { border-top: none; }
+  a.title {
+    color: inherit; text-decoration: none;
+    border-bottom: 1px solid var(--accent);
+    font-weight: 600;
+  }
+  a.title:hover { color: var(--accent); }
+  .part { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .desc { display: block; opacity: .6; font-size: .9rem; margin-top: .15rem; }
+  code { font-family: ui-monospace, "JetBrains Mono", monospace; font-size: .85em; }
 </style>
 </head>
 <body>
   <h1>notes</h1>
-  <p class="sub">scratchpad &middot; <a href="https://phemantics.xyz">phemantics.xyz</a></p>
+  <p class="sub">scratchpad &middot; <a href="https://phemantics.xyz" style="color:inherit">phemantics.xyz</a></p>
 
-  <h2>Python concurrency</h2>
+  <h2>Python concurrency &middot; the series</h2>
   <ul>
-    <li><a href="python-concurrency/gil-part-1.html">Part 1 &mdash; The GIL, from the ground up</a></li>
-    <li><a href="python-concurrency/gil-part-2.html">Part 2 &mdash; What the GIL actually protects</a></li>
-    <li><a href="python-concurrency/gil-part-3.html">Part 3 &mdash; Life after the GIL</a></li>
-    <li><a href="python-concurrency/measuring-asyncio.html">Measuring asyncio</a></li>
+    <li>
+      <span class="part">01</span> &nbsp;<a class="title" href="python-concurrency/gil-part-1.html">The GIL is Not Your Enemy</a>
+      <span class="desc">Refcounting, the 5ms handoff, and what the lock actually protects.</span>
+    </li>
+    <li>
+      <span class="part">02</span> &nbsp;<a class="title" href="python-concurrency/gil-part-2.html">The Loop is the Trick</a>
+      <span class="desc">epoll, coroutines, <code>_run_once</code>, and the Task spine that drives them.</span>
+    </li>
+    <li>
+      <span class="part">03</span> &nbsp;<a class="title" href="python-concurrency/asyncio-sidequests.html">Asyncio Sidequests</a>
+      <span class="desc">The self-pipe, signals, debug mode, <code>asyncio.run</code>, contextvars, uvloop.</span>
+    </li>
+    <li>
+      <span class="part">04</span> &nbsp;<a class="title" href="python-concurrency/anyio-cancellation.html">Two Ways to Cancel</a>
+      <span class="desc">anyio, checkpoints, and the protocols <code>await</code> is made of.</span>
+    </li>
+    <li>
+      <span class="part">05</span> &nbsp;<a class="title" href="python-concurrency/gil-part-3.html">Servers, in Earnest</a>
+      <span class="desc">Putting the loop to work behind a real request-serving stack.</span>
+    </li>
+  </ul>
+
+  <h2>Python concurrency &middot; standalones</h2>
+  <ul>
+    <li>
+      <a class="title" href="python-concurrency/measuring-asyncio.html">Measure the Loop, Not the Request</a>
+      <span class="desc">Instrumenting asyncio: stall canary, task census, py-spy, the five metrics.</span>
+    </li>
+    <li>
+      <a class="title" href="python-concurrency/middleware-onion.html">Middleware is an Onion</a>
+      <span class="desc">Starlette's request stack, layer by layer, and where it leaks.</span>
+    </li>
+    <li>
+      <a class="title" href="python-concurrency/sse-disconnect-detection.html">The Peek That Always Returns False</a>
+      <span class="desc">Chasing SSE disconnect detection through five middleware layers.</span>
+    </li>
   </ul>
 
   <h2>DSA &middot; stock span</h2>
   <ul>
-    <li><a href="dsa/stockspan/problem1.html">Problem 1</a></li>
-    <li><a href="dsa/stockspan/problem2.html">Problem 2</a></li>
-    <li><a href="dsa/stockspan/problem3.html">Problem 3</a></li>
+    <li><a class="title" href="dsa/stockspan/problem1.html">Stock Span &mdash; Level 1</a></li>
+    <li><a class="title" href="dsa/stockspan/problem2.html">Reign &mdash; Level 2</a></li>
+    <li><a class="title" href="dsa/stockspan/problem3.html">Operations &mdash; Round 1</a></li>
   </ul>
 </body>
 </html>
