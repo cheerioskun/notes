@@ -690,8 +690,8 @@ asyncio.<span class="fn">run</span>(<span class="fn">main</span>(), loop_factory
 
     <div class="bridge">
       <div class="bridge__label">Up next · Part 4 of 5</div>
-      <div class="bridge__title">Structured concurrency with anyio</div>
-      <p>asyncio gives you the mechanism. It doesn't give you the discipline. <code>asyncio.TaskGroup</code> in 3.11 was a half-step toward structured concurrency; anyio is the full one — checkpoints, cancel scopes, the guarantee that no task outlives the function that spawned it. Part 4 is the discipline layer, and the case for writing new async code anyio-first.</p>
+      <div class="bridge__title"><a href="./anyio-cancellation.html">Two Ways to Cancel</a></div>
+      <p>asyncio gives you the mechanism. It doesn't give you the discipline. <code>asyncio.TaskGroup</code> in 3.11 was a half-step toward structured concurrency; anyio is the full one — checkpoints, cancel scopes, the guarantee that no task outlives the function that spawned it. Part 4 is the discipline layer, and the case for writing new async code anyio-first — starting one level down, at the protocols <code>await</code> is made of.</p>
     </div>
 
   </section>

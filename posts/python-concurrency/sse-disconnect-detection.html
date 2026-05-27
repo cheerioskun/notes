@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Peek That Always Returns False — disconnect detection through five middleware layers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400;1,6..72,500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'Newsreader', 'Iowan Old Style', 'Palatino', Georgia, serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  }
+
+  html[data-theme="light"] {
+    --bg: #f5f3ee;
+    --bg-tint: #ecebe3;
+    --surface: #fbfaf6;
+    --surface-elevated: #ffffff;
+    --surface-recessed: #ecebe3;
+    --border: rgba(30, 42, 74, 0.10);
+    --border-bright: rgba(30, 42, 74, 0.22);
+    --text: #1a2138;
+    --text-bright: #0e1426;
+    --text-dim: #4d5876;
+    --text-muted: #7a849c;
+
+    --accent: #1e2a4a;
+    --accent-dim: rgba(30, 42, 74, 0.08);
+    --accent-bright: #2b3a64;
+    --glacier: #5a7a8a;
+    --glacier-dim: rgba(90, 122, 138, 0.12);
+    --glacier-bright: #6e92a4;
+    --copper: #a05a2c;
+    --copper-dim: rgba(160, 90, 44, 0.10);
+    --moss: #4a6c4a;
+    --moss-dim: rgba(74, 108, 74, 0.10);
+    --rust: #8b3a1f;
+  }
+
+  html[data-theme="dark"] {
+    --bg: #0e1426;
+    --bg-tint: #161e36;
+    --surface: #161e36;
+    --surface-elevated: #1c2540;
+    --surface-recessed: #0a0f1c;
+    --border: rgba(210, 224, 240, 0.10);
+    --border-bright: rgba(210, 224, 240, 0.22);
+    --text: #dde4f0;
+    --text-bright: #f1f5fb;
+    --text-dim: #98a4ba;
+    --text-muted: #6c7a92;
+
+    --accent: #8aa4d0;
+    --accent-dim: rgba(138, 164, 208, 0.14);
+    --accent-bright: #a8bce0;
+    --glacier: #9bc0d0;
+    --glacier-dim: rgba(155, 192, 208, 0.14);
+    --glacier-bright: #b6d4e4;
+    --copper: #d68a4a;
+    --copper-dim: rgba(214, 138, 74, 0.14);
+    --moss: #94b094;
+    --moss-dim: rgba(148, 176, 148, 0.14);
+    --rust: #c67050;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse at 10% 0%, var(--glacier-dim) 0%, transparent 50%),
+      radial-gradient(ellipse at 92% 8%, var(--copper-dim) 0%, transparent 45%);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 19px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    overflow-wrap: break-word;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+  body * { min-width: 0; }
+
+  .progress {
+    position: fixed; top: 0; left: 0; width: 0%; height: 2px;
+    background: linear-gradient(90deg, var(--glacier), var(--accent));
+    z-index: 100; transition: width 0.08s linear;
+  }
+
+  .site-header {
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex; justify-content: space-between; align-items: center;
+    max-width: 1100px; margin: 0 auto;
+  }
+  .site-header__title {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 2.5px; text-transform: uppercase; color: var(--text-muted);
+  }
+  .theme-toggle {
+    background: none; border: 1px solid var(--border-bright);
+    color: var(--text-dim); padding: 6px 14px; border-radius: 4px;
+    cursor: pointer; font-family: var(--font-mono);
+    font-size: 11px; letter-spacing: 1px; transition: all 0.2s;
+  }
+  .theme-toggle:hover { border-color: var(--glacier); color: var(--glacier-bright); }
+
+  .page { max-width: 720px; margin: 0 auto; padding: 60px 32px 120px; }
+
+  .toc {
+    background: var(--surface-recessed); border: 1px solid var(--border);
+    border-radius: 8px; padding: 22px 28px; margin-bottom: 56px;
+  }
+  .toc__label {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--text-muted);
+    margin-bottom: 14px;
+  }
+  .toc ol {
+    list-style: none; counter-reset: toc;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px;
+  }
+  @media (max-width: 560px) { .toc ol { grid-template-columns: 1fr; } }
+  .toc li { counter-increment: toc; line-height: 1.4; }
+  .toc a {
+    color: var(--text-dim); text-decoration: none; font-size: 15px;
+    display: flex; gap: 12px; align-items: baseline; padding: 4px 0;
+    transition: color 0.15s;
+  }
+  .toc a:hover { color: var(--accent); }
+  .toc a::before {
+    content: counter(toc, decimal-leading-zero);
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--glacier); font-weight: 500; min-width: 24px;
+  }
+
+  .hero { margin-bottom: 40px; padding-bottom: 36px; border-bottom: 1px solid var(--border); }
+  .hero__series {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--glacier);
+    margin-bottom: 20px;
+  }
+  .hero__series::before {
+    content: ''; display: inline-block; width: 24px; height: 1px;
+    background: var(--glacier); vertical-align: middle; margin-right: 12px;
+    transform: translateY(-2px);
+  }
+  .hero__title {
+    font-family: var(--font-body); font-weight: 600;
+    font-size: clamp(36px, 5.5vw, 54px); line-height: 1.05;
+    letter-spacing: -1.2px; color: var(--text-bright);
+    margin-bottom: 18px; text-wrap: balance;
+  }
+  .hero__subtitle {
+    font-style: italic; font-size: 22px; line-height: 1.4;
+    color: var(--text-dim); max-width: 600px; margin-bottom: 28px;
+  }
+  .hero__meta {
+    font-family: var(--font-mono); font-size: 12px; color: var(--text-muted);
+    display: flex; gap: 20px; flex-wrap: wrap;
+  }
+  .hero__meta span { display: inline-flex; align-items: center; gap: 6px; }
+  .hero__meta span::before {
+    content: ''; width: 4px; height: 4px;
+    background: var(--text-muted); border-radius: 50%;
+  }
+  .hero__meta span:first-child::before { display: none; }
+
+  .prose p { margin-bottom: 1.3em; text-wrap: pretty; }
+  .prose strong { color: var(--text-bright); font-weight: 600; }
+  .prose em { font-style: italic; color: var(--text-bright); }
+  .prose a {
+    color: var(--glacier-bright); text-decoration: underline;
+    text-decoration-thickness: 1px; text-underline-offset: 3px;
+  }
+  .prose code {
+    font-family: var(--font-mono); font-size: 0.82em;
+    background: var(--glacier-dim); color: var(--accent);
+    padding: 1px 6px; border-radius: 3px; font-weight: 500;
+  }
+  html[data-theme="dark"] .prose code { color: var(--glacier-bright); }
+
+  .lead { font-size: 22px; line-height: 1.55; color: var(--text-bright); margin-bottom: 36px; }
+
+  h2 {
+    font-family: var(--font-body); font-weight: 600; font-size: 32px;
+    line-height: 1.15; letter-spacing: -0.6px; color: var(--text-bright);
+    margin-top: 64px; margin-bottom: 8px; text-wrap: balance;
+    scroll-margin-top: 24px;
+  }
+  h2 .num {
+    font-family: var(--font-mono); font-size: 13px; font-weight: 500;
+    color: var(--glacier); letter-spacing: 1px; display: block; margin-bottom: 6px;
+  }
+  h3 {
+    font-family: var(--font-body); font-weight: 600; font-size: 22px;
+    line-height: 1.3; color: var(--text-bright);
+    margin-top: 36px; margin-bottom: 12px;
+  }
+
+  .code-block {
+    font-family: var(--font-mono); font-size: 13px; line-height: 1.65;
+    background: var(--surface-recessed); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 16px 20px; margin: 24px 0;
+    overflow-x: auto; white-space: pre;
+    box-shadow: inset 0 1px 3px rgba(30, 42, 74, 0.04);
+  }
+  .code-block .kw  { color: var(--rust); font-weight: 500; }
+  .code-block .com { color: var(--text-muted); font-style: italic; }
+  .code-block .str { color: var(--moss); }
+  .code-block .num { color: var(--copper); }
+  .code-block .fn  { color: var(--glacier-bright); }
+  .code-block .ty  { color: var(--accent); font-weight: 500; }
+  .code-block .hl  { background: var(--copper-dim); padding: 0 4px; border-radius: 2px; }
+
+  .code-caption {
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+    margin-top: -16px; margin-bottom: 28px; padding-left: 4px; letter-spacing: 0.3px;
+  }
+
+  .pullquote {
+    margin: 48px 0; padding: 0 0 0 28px;
+    border-left: 3px solid var(--glacier);
+    font-style: italic; font-size: 24px; line-height: 1.4;
+    color: var(--text-bright);
+  }
+
+  .callout {
+    margin: 32px 0; padding: 18px 22px;
+    background: var(--glacier-dim); border-left: 3px solid var(--glacier);
+    border-radius: 0 8px 8px 0;
+    font-size: 17px; line-height: 1.55;
+  }
+  .callout--warn { background: var(--copper-dim); border-left-color: var(--copper); }
+  .callout--trap { background: var(--accent-dim); border-left-color: var(--accent); }
+  .callout__label {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    letter-spacing: 1.8px; text-transform: uppercase;
+    color: var(--glacier); margin-bottom: 6px; display: block;
+  }
+  .callout--warn .callout__label { color: var(--copper); }
+  .callout--trap .callout__label { color: var(--accent); }
+  html[data-theme="dark"] .callout--trap .callout__label { color: var(--accent-bright); }
+  .callout p { margin-bottom: 0; }
+  .callout p + p { margin-top: 10px; }
+  .callout code {
+    font-family: var(--font-mono); font-size: 0.82em;
+    background: rgba(0,0,0,0.04); color: inherit;
+    padding: 1px 5px; border-radius: 3px;
+  }
+  html[data-theme="dark"] .callout code { background: rgba(255,255,255,0.06); }
+
+  .diagram {
+    margin: 40px 0; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 28px 24px; box-shadow: 0 1px 3px rgba(30, 42, 74, 0.04);
+  }
+  .diagram__title {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--glacier); margin-bottom: 4px;
+  }
+  .diagram__caption {
+    font-family: var(--font-body); font-size: 15px; font-style: italic;
+    color: var(--text-dim); margin-bottom: 22px; max-width: 580px;
+  }
+  .diagram svg { display: block; width: 100%; height: auto; max-width: 100%; }
+
+  .table-wrap {
+    margin: 32px 0; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  }
+  .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.data {
+    width: 100%; border-collapse: collapse;
+    font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  }
+  table.data th {
+    background: var(--surface-recessed);
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1.4px; color: var(--text-dim);
+    text-align: left; padding: 12px 16px;
+    border-bottom: 2px solid var(--border-bright); white-space: nowrap;
+  }
+  table.data td {
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+    vertical-align: top; color: var(--text);
+  }
+  table.data tr:last-child td { border-bottom: none; }
+  table.data tr:nth-child(even) td { background: var(--glacier-dim); }
+  table.data td:first-child {
+    font-family: var(--font-mono); font-size: 13px;
+    color: var(--accent); font-weight: 500; white-space: nowrap;
+  }
+  html[data-theme="dark"] table.data td:first-child { color: var(--accent-bright); }
+
+  .takeaways {
+    margin: 32px 0; padding: 24px 28px;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border); border-radius: 10px;
+    list-style: none;
+  }
+  .takeaways li {
+    font-size: 18px; padding: 10px 0 10px 22px;
+    border-bottom: 1px dashed var(--border);
+    position: relative;
+  }
+  .takeaways li:last-child { border-bottom: none; }
+  .takeaways li::before {
+    content: '·'; color: var(--glacier); font-weight: 600;
+    font-family: var(--font-mono);
+    position: absolute; left: 4px; top: 10px;
+  }
+
+  .bridge {
+    margin-top: 80px; padding: 36px 32px;
+    background: var(--surface-elevated); border: 1px solid var(--border);
+    border-radius: 12px; border-left: 4px solid var(--glacier);
+  }
+  .bridge__label {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--glacier); margin-bottom: 12px;
+  }
+  .bridge__title {
+    font-weight: 600; font-size: 24px;
+    color: var(--text-bright); margin-bottom: 10px;
+  }
+  .bridge p { color: var(--text-dim); margin-bottom: 0; font-size: 17px; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .hero, .toc, .section { animation: fadeUp 0.5s ease-out both; }
+  .toc { animation-delay: 0.05s; }
+  .section { animation-delay: 0.10s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .page { padding: 36px 20px 80px; }
+    .site-header { padding: 14px 20px; }
+    body { font-size: 17px; }
+    .lead { font-size: 19px; }
+    h2 { font-size: 26px; margin-top: 48px; }
+    h3 { font-size: 19px; }
+    .pullquote { font-size: 20px; padding-left: 18px; }
+    .code-block { font-size: 12px; padding: 14px 16px; }
+    .diagram { padding: 20px 14px; }
+  }
+
+  .diag-text { font-family: var(--font-mono); font-size: 11px; fill: var(--text); }
+  .diag-text--dim { fill: var(--text-dim); }
+  .diag-text--label { font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+  .diag-line { stroke: var(--border-bright); stroke-width: 1.2; fill: none; }
+  .diag-arrow { stroke: var(--text-dim); stroke-width: 1.2; fill: none; }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+
+<header class="site-header">
+  <span class="site-header__title">Python Concurrency Decoded</span>
+  <button class="theme-toggle" data-theme-toggle aria-label="Toggle theme">◐ Theme</button>
+</header>
+
+<article class="page prose">
+
+  <header class="hero">
+    <div class="hero__series">Field report · sibling to Parts 1–5</div>
+    <h1 class="hero__title">The Peek That Always Returns False</h1>
+    <p class="hero__subtitle">Disconnect detection through five middleware layers — why the textbook fix lies, why the surgical fix races in principle, and what we'd write if scope didn't matter.</p>
+    <div class="hero__meta">
+      <span>~14 min read</span>
+      <span>Python 3.11+</span>
+      <span>Assumes: Parts 4 &amp; 5</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <div class="toc__label">In this post</div>
+    <ol>
+      <li><a href="#s1">A leak in slow motion</a></li>
+      <li><a href="#s2">The disconnect contract</a></li>
+      <li><a href="#s3">The textbook fix, and its CancelScope trick</a></li>
+      <li><a href="#s4">Why the trick disarms itself</a></li>
+      <li><a href="#s5">Block, don't peek</a></li>
+      <li><a href="#s6">But who owns receive?</a></li>
+      <li><a href="#s7">What it cost — and why one second</a></li>
+      <li><a href="#s8">What's still wrong</a></li>
+      <li><a href="#s9">Take with you</a></li>
+    </ol>
+  </nav>
+
+  <section class="section">
+
+    <p class="lead">Alive-asyncio-task count on the API pod climbs from 500 to 2,200 over three hours and never comes back down. Nothing in the request log explains it. Nobody is opening tabs at three in the morning. The only thing the dashboard has to offer is a slope.</p>
+
+    <p>The graph is the kind of evidence that looks like a smoking gun until you try to point it at something. There is no error rate to anchor on, no latency cliff, no obvious correlate. The pod hits its task ceiling some time around hour six and starts OOMing on the executor queue. By then the leak is so large it dominates everything; the cause has been invisible for a quarter of a day.</p>
+
+    <p>This is the applied capstone of the series: <a href="./anyio-cancellation.html">Part 4</a> built anyio's deferred cancellation and the pre-armed peek from source, <a href="./middleware-onion.html">Part 5</a> built <code>BaseHTTPMiddleware</code>'s task-group bridge. This post is where both conspire into one production bug. It is the postmortem of one such leak, and of the fix — three real lines of code with a paragraph of justification each. But the post is also about what didn't ship. The fix that landed is the smallest possible change. There are two other fixes one layer up and one layer further up still, each more principled than the last and each with a blast radius that disqualified it from a release-branch hotfix. The interesting work is in seeing why all three exist and what each one is paying for.</p>
+
+    <div class="callout">
+      <span class="callout__label">From Go</span>
+      <p>In a Go HTTP handler that streams, you select on <code>&lt;-r.Context().Done()</code> against your work channel. The <code>net/http</code> server closes the context when the client disconnects — wired directly into the connection's read loop, no peek-vs-block dance. Python's equivalent does not come pre-wired. You install it. And the place you install it matters as much as the installation itself.</p>
+    </div>
+
+    <h2 id="s1"><span class="num">§1</span>A leak in slow motion</h2>
+
+    <p>The product is a Server-Sent Events stream. A user opens a chat tab; the browser issues a long-lived <code>GET /streaming</code>; the handler subscribes to a Redis stream and yields events as they arrive. When the tab closes, the TCP connection ends. The handler should notice and unsubscribe.</p>
+
+    <p>The handler is the kind of code that reads like nothing is wrong:</p>
+
+<pre class="code-block"><span class="kw">async def</span> <span class="fn">stream_events</span>(stream_info):
+    message_queue, cancel_func = stream_info
+    <span class="kw">try</span>:
+        <span class="kw">yield</span> <span class="ty">ServerSentEvent</span>(event=<span class="str">"init-stream"</span>, data={<span class="str">"type"</span>: <span class="str">"init-stream"</span>})
+        <span class="kw">while True</span>:
+            <span class="kw">try</span>:
+                message = <span class="kw">await</span> asyncio.<span class="fn">wait_for</span>(message_queue.<span class="fn">get</span>(), timeout=<span class="num">1.0</span>)
+                <span class="kw">if</span> message:
+                    <span class="kw">yield</span> <span class="ty">ServerSentEvent</span>(event=<span class="str">"update"</span>, data=…, id=…)
+            <span class="kw">except</span> asyncio.<span class="ty">TimeoutError</span>:
+                <span class="kw">pass</span>
+    <span class="kw">except Exception</span> <span class="kw">as</span> e:
+        logger.<span class="fn">error</span>(<span class="str">"Error in SSE stream"</span>, error=str(e))
+    <span class="kw">finally</span>:
+        <span class="fn">cancel_func</span>()</pre>
+    <p class="code-caption">The SSE route handler, before the fix. Every iteration either delivers a message or sleeps for a second. Nothing in the loop body ever exits it.</p>
+
+    <p>Read the loop carefully. There is no way out. <code>while True</code> with a <code>get()</code> that either returns a message or times out — neither branch sets a flag, neither raises. The only way the function ever returns is if something <em>outside</em> it cancels the task running it. So: what is supposed to cancel it?</p>
+
+    <p>The framework's job, in theory. When the client disconnects, FastAPI is supposed to inject a <code>CancelledError</code> into the handler. In practice this happens in exactly two situations:</p>
+
+    <ol style="margin-left: 24px; margin-bottom: 1.3em;">
+      <li style="margin-bottom: 8px;"><strong>The response generator yields, the framework tries to send, the send fails on a broken socket.</strong> The send wraps the failure and cancels the generator. This works fine on a busy stream — events are flowing, every yield is a chance to discover the closed connection. It fails on an idle stream: no events to yield, no sends to fail, no cancellation, ever.</li>
+      <li><strong>The application explicitly reads <code>http.disconnect</code> from the receive channel.</strong> Uvicorn enqueues that message the moment the TCP read returns zero. But uvicorn does not push it; the application must pull. The handler above never reads receive at all, so the message sits in the queue and the disconnect is invisible.</li>
+    </ol>
+
+    <p>So an idle SSE client whose tab is closed creates a handler that will live until the process restarts. Across many tabs and a sufficiently quiet channel, the leak is linear in the number of disconnects — which is what we saw climbing on the dashboard.</p>
+
+    <h2 id="s2"><span class="num">§2</span>The disconnect contract</h2>
+
+    <p>The ASGI receive channel is a queue of dicts that look like this:</p>
+
+<pre class="code-block"><span class="com"># Uvicorn pushes these into the per-request queue.</span>
+{<span class="str">"type"</span>: <span class="str">"http.request"</span>, <span class="str">"body"</span>: <span class="kw">b</span><span class="str">"…"</span>, <span class="str">"more_body"</span>: <span class="kw">False</span>}
+{<span class="str">"type"</span>: <span class="str">"http.disconnect"</span>}                <span class="com"># on FIN/RST</span></pre>
+
+    <p>The disconnect message is the only authoritative signal that the client is gone. There is no parallel out-of-band channel, no signal, no flag on the request object set by the server. The server pushes one dict into one queue and considers the contract honored. The application has to read it.</p>
+
+    <p>"The application has to read it" is the line every fix in this post is rephrasing. The reading is the entire job. The post is about <em>who</em> does the reading, <em>where</em> in the stack they do it, and what other code might be reading the same channel at the same time. The shape of the answer determines the shape of the fix.</p>
+
+    <div class="diagram">
+      <div class="diagram__title">Diagram A · the disconnect plumbing</div>
+      <p class="diagram__caption">Uvicorn pushes <code>http.disconnect</code> into the per-request receive queue. Five <code>BaseHTTPMiddleware</code> layers each wrap that channel in their own coroutine before it reaches the handler. Every layer is also a yield point.</p>
+
+      <svg viewBox="0 0 680 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="ASGI receive plumbing showing uvicorn at the bottom feeding through five middleware layers up to the handler at the top">
+        <defs>
+          <marker id="arrA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" fill-opacity="0.55"/>
+          </marker>
+        </defs>
+
+        <rect x="220" y="20" width="240" height="44" rx="6" fill="var(--copper-dim)" stroke="var(--copper)" stroke-width="1.2"/>
+        <text x="340" y="40" text-anchor="middle" class="diag-text" font-weight="600">stream_events handler</text>
+        <text x="340" y="55" text-anchor="middle" class="diag-text diag-text--dim">awaits receive (somewhere)</text>
+
+        <g>
+          <rect x="180" y="84"  width="320" height="32" rx="4" fill="var(--surface-recessed)" stroke="var(--border-bright)"/>
+          <text x="340" y="104" text-anchor="middle" class="diag-text">request context (BaseHTTP)</text>
+
+          <rect x="180" y="124" width="320" height="32" rx="4" fill="var(--surface-recessed)" stroke="var(--border-bright)"/>
+          <text x="340" y="144" text-anchor="middle" class="diag-text">auth (BaseHTTP)</text>
+
+          <rect x="180" y="164" width="320" height="32" rx="4" fill="var(--surface-recessed)" stroke="var(--border-bright)"/>
+          <text x="340" y="184" text-anchor="middle" class="diag-text">logging (BaseHTTP)</text>
+
+          <rect x="180" y="204" width="320" height="32" rx="4" fill="var(--surface-recessed)" stroke="var(--border-bright)"/>
+          <text x="340" y="224" text-anchor="middle" class="diag-text">request timing (BaseHTTP)</text>
+
+          <rect x="180" y="244" width="320" height="32" rx="4" fill="var(--surface-recessed)" stroke="var(--border-bright)"/>
+          <text x="340" y="264" text-anchor="middle" class="diag-text">signature check (BaseHTTP)</text>
+        </g>
+
+        <g font-family="var(--font-mono)" font-size="9" fill="var(--copper)" font-weight="600">
+          <text x="514" y="103">↪ yield</text>
+          <text x="514" y="143">↪ yield</text>
+          <text x="514" y="183">↪ yield</text>
+          <text x="514" y="223">↪ yield</text>
+          <text x="514" y="263">↪ yield</text>
+        </g>
+
+        <rect x="180" y="296" width="320" height="44" rx="6" fill="var(--glacier-dim)" stroke="var(--glacier)" stroke-width="1.2"/>
+        <text x="340" y="316" text-anchor="middle" class="diag-text" font-weight="600">uvicorn — receive queue</text>
+        <text x="340" y="331" text-anchor="middle" class="diag-text diag-text--dim">{ "type": "http.disconnect" } sits here</text>
+
+        <path d="M 145 320 Q 110 320 110 180 Q 110 42 215 42" class="diag-arrow" marker-end="url(#arrA)"/>
+        <text x="86" y="180" class="diag-text diag-text--dim" transform="rotate(-90 86 180)" text-anchor="middle">receive() ↑</text>
+      </svg>
+    </div>
+
+    <h2 id="s3"><span class="num">§3</span>The textbook fix, and its CancelScope trick</h2>
+
+    <p>The FastAPI documentation, the Starlette changelog, every blog post on long-lived endpoints — they all point to the same one-liner:</p>
+
+<pre class="code-block"><span class="kw">while True</span>:
+    <span class="kw">if</span> <span class="kw">await</span> request.<span class="fn">is_disconnected</span>():
+        <span class="kw">break</span>
+    …</pre>
+
+    <p>Reasonable. The check is meant to be cheap. It is supposed to <em>peek</em> at the receive queue: if there is a message ready, look at it; if not, return immediately. Don't block on something that may never arrive. The peek means you can call it once per loop iteration without paying for a real wait.</p>
+
+    <p>How does Starlette implement a non-blocking peek on top of a blocking <code>receive()</code>? It uses a trick I find genuinely lovely:</p>
+
+<pre class="code-block"><span class="com"># starlette/requests.py — real source, 1.0.0.</span>
+<span class="kw">async def</span> <span class="fn">is_disconnected</span>(self) -&gt; <span class="ty">bool</span>:
+    <span class="kw">if not</span> self._is_disconnected:
+        message: <span class="ty">Message</span> = {}
+
+        <span class="com"># If message isn't immediately available, move on</span>
+        <span class="kw">with</span> anyio.<span class="fn">CancelScope</span>() <span class="kw">as</span> cs:
+            cs.<span class="fn">cancel</span>()                  <span class="com"># pre-armed!</span>
+            message = <span class="kw">await</span> self.<span class="fn">_receive</span>()
+
+        <span class="kw">if</span> message.<span class="fn">get</span>(<span class="str">"type"</span>) == <span class="str">"http.disconnect"</span>:
+            self._is_disconnected = <span class="kw">True</span>
+    <span class="kw">return</span> self._is_disconnected</pre>
+
+    <p>Read it slowly. <code>anyio.CancelScope()</code> opens a scope. <code>cs.cancel()</code> on the very next line marks it as cancelled <em>before any await runs</em>. The scope is pre-armed: any <code>await</code> performed inside it will, at the next cancellation checkpoint, raise <code>CancelledError</code>. The scope then catches that cancellation and exits normally.</p>
+
+    <p>The intended behavior is straight out of a thought experiment about Python's async semantics. If <code>self._receive()</code> can return a message <em>without yielding to the event loop</em> — which happens when a message is already sitting in its queue and the coroutine pulls it synchronously and returns — then the pre-armed cancellation never gets a chance to fire. The peek succeeds. You get the message. If, on the other hand, <code>self._receive()</code> has to yield because the queue is empty, the first yield is also the first cancellation checkpoint, and the pre-arm fires immediately. The peek aborts. You get nothing, and you assume "no message ready."</p>
+
+    <div class="callout">
+      <span class="callout__label">Mental model</span>
+      <p>Pre-armed cancel scope = <em>"return if you can do it without ever pausing; otherwise act as if I never asked."</em> It is a beautiful way to write <code>queue.peek()</code> on top of an interface that only exposes <code>queue.get()</code>. It depends entirely on the assumption that <code>_receive()</code> can sometimes return synchronously.</p>
+    </div>
+
+    <p>In a stock ASGI application, that assumption holds. <code>_receive()</code> is uvicorn's <code>queue.get</code>, which is implemented as <code>await asyncio.Queue.get()</code>, which — when the queue is non-empty — pulls and returns without yielding. The peek is real.</p>
+
+    <p>And then we wrap it.</p>
+
+    <h2 id="s4"><span class="num">§4</span>Why the trick disarms itself</h2>
+
+    <p>The request path runs through five <code>BaseHTTPMiddleware</code> layers — signature verification, request timing, logging, auth, and request context. Each is a Starlette middleware, and <code>BaseHTTPMiddleware</code> does not hand its downstream the raw receive channel. It hands down a wrapper that races two things at once — the real receive, and a watch on whether the response has already been sent:</p>
+
+<pre class="code-block"><span class="com"># starlette/middleware/base.py — the real receive_or_disconnect (1.0.0).</span>
+<span class="kw">async def</span> <span class="fn">receive_or_disconnect</span>() -&gt; <span class="ty">Message</span>:
+    <span class="kw">if</span> response_sent.<span class="fn">is_set</span>():
+        <span class="kw">return</span> {<span class="str">"type"</span>: <span class="str">"http.disconnect"</span>}
+
+    <span class="kw">async with</span> anyio.<span class="fn">create_task_group</span>() <span class="kw">as</span> task_group:
+        <span class="kw">async def</span> <span class="fn">wrap</span>(func):
+            result = <span class="kw">await</span> <span class="fn">func</span>()
+            task_group.<span class="fn">cancel_scope</span>.<span class="fn">cancel</span>()   <span class="com"># first one home cancels the other</span>
+            <span class="kw">return</span> result
+
+        task_group.<span class="fn">start_soon</span>(wrap, response_sent.wait)  <span class="com"># background sibling</span>
+        message = <span class="kw">await</span> <span class="fn">wrap</span>(wrapped_receive)            <span class="com"># foreground</span>
+
+    <span class="kw">if</span> response_sent.<span class="fn">is_set</span>():
+        <span class="kw">return</span> {<span class="str">"type"</span>: <span class="str">"http.disconnect"</span>}
+    <span class="kw">return</span> message</pre>
+    <p class="code-caption">Every <code>BaseHTTPMiddleware</code> instance exposes <em>this</em> as the receive channel to its downstream — a coroutine that opens a fresh task group, with a sibling waiter, on every call.</p>
+
+    <p>This is a small piece of structured concurrency. <code>start_soon</code> schedules a background sibling blocked on <code>response_sent.wait()</code>; the foreground <code>await wrap(wrapped_receive)</code> waits on the real receive. Whichever finishes first calls <code>task_group.cancel_scope.cancel()</code> to tear the other down. The detail that kills our peek is the teardown. A task group cannot exit until its children are joined — and joining a still-running sibling means <code>__aexit__</code> has to <code>await</code>. So <code>receive_or_disconnect</code> <em>always</em> suspends at least once before it returns, even when the underlying receive had a message ready: there is always a sibling to wind down.</p>
+
+    <p>That suspension is the checkpoint our pre-arm has been waiting for. Recall the mechanism from §3 — <a href="./anyio-cancellation.html">Part 4</a> derives it from the anyio source, and <a href="./middleware-onion.html">Part 5</a> decodes this exact <code>receive_or_disconnect</code>: <code>cancel()</code> does not cancel the running task on the spot — <code>_deliver_cancellation</code> skips the currently-running task and reschedules itself with <code>loop.call_soon</code>, so the cancellation only lands the <em>next</em> time the task suspends and control returns to the loop. In a stock app, <code>await receive()</code> on a ready queue returns without ever suspending, so that scheduled cancellation never gets a turn and the peek succeeds. Through <code>BaseHTTPMiddleware</code>, the task-group join forces a suspension no matter what — and the instant the host task suspends, the <code>call_soon</code>'d cancellation fires, <code>CancelledError</code> is raised into the join, the scope catches it, and <code>is_disconnected()</code> returns <code>False</code>. The real receive underneath was never consulted.</p>
+
+    <div class="diagram">
+      <div class="diagram__title">Diagram B · the peek that never reaches the queue</div>
+      <p class="diagram__caption">Pre-arm fires on the first suspension. <code>receive_or_disconnect</code> always suspends to join its background sibling — even when the receive was ready — and the join is where the scheduled cancellation lands.</p>
+
+      <svg viewBox="0 0 680 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Sequence diagram showing pre-armed cancel scope firing on the first await yield before reaching uvicorn's queue">
+        <defs>
+          <marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" fill-opacity="0.6"/>
+          </marker>
+          <marker id="arrBack" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 10 0 L 0 5 L 10 10 z" fill="var(--copper)"/>
+          </marker>
+        </defs>
+
+        <text x="60" y="32" class="diag-text diag-text--label" fill="var(--accent)" text-anchor="middle">is_disconnected</text>
+        <line x1="60" y1="42" x2="60" y2="300" class="diag-line" stroke-dasharray="2 4"/>
+
+        <text x="240" y="32" class="diag-text diag-text--label" fill="var(--accent)" text-anchor="middle">CancelScope</text>
+        <line x1="240" y1="42" x2="240" y2="300" class="diag-line" stroke-dasharray="2 4"/>
+
+        <text x="420" y="32" class="diag-text diag-text--label" fill="var(--accent)" text-anchor="middle">middleware._receive</text>
+        <line x1="420" y1="42" x2="420" y2="300" class="diag-line" stroke-dasharray="2 4"/>
+
+        <text x="610" y="32" class="diag-text diag-text--label" fill="var(--accent)" text-anchor="middle">uvicorn queue</text>
+        <line x1="610" y1="42" x2="610" y2="300" class="diag-line" stroke-dasharray="2 4"/>
+
+        <path d="M 60 70 L 240 70" class="diag-arrow" marker-end="url(#arrB)"/>
+        <text x="150" y="64" text-anchor="middle" class="diag-text">with anyio.CancelScope()</text>
+
+        <path d="M 60 100 L 240 100" class="diag-arrow" marker-end="url(#arrB)"/>
+        <text x="150" y="94" text-anchor="middle" class="diag-text" fill="var(--copper)" font-weight="600">cs.cancel()  ← pre-armed</text>
+
+        <path d="M 60 140 L 420 140" class="diag-arrow" marker-end="url(#arrB)"/>
+        <text x="240" y="134" text-anchor="middle" class="diag-text">await self._receive()</text>
+
+        <rect x="408" y="156" width="24" height="44" fill="var(--copper-dim)" stroke="var(--copper)" stroke-width="1"/>
+        <text x="535" y="168" text-anchor="middle" class="diag-text">task group spawns a sibling waiter;</text>
+        <text x="535" y="182" text-anchor="middle" class="diag-text">__aexit__ must await the join</text>
+        <text x="535" y="196" text-anchor="middle" class="diag-text diag-text--dim">— suspends here —</text>
+
+        <path d="M 420 222 L 240 222" stroke="var(--copper)" stroke-width="1.6" fill="none" marker-end="url(#arrBack)"/>
+        <text x="330" y="216" text-anchor="middle" class="diag-text" fill="var(--copper)" font-weight="600">CancelledError on first await</text>
+
+        <path d="M 240 260 L 60 260" stroke="var(--copper)" stroke-width="1.6" fill="none" marker-end="url(#arrBack)"/>
+        <text x="150" y="254" text-anchor="middle" class="diag-text" fill="var(--copper)" font-weight="600">return False</text>
+
+        <text x="610" y="158" text-anchor="middle" class="diag-text diag-text--dim">never reached</text>
+        <circle cx="610" cy="170" r="14" fill="var(--glacier-dim)" stroke="var(--glacier)" stroke-dasharray="3 3"/>
+      </svg>
+    </div>
+
+    <p>I want to stress that nothing here is broken, in the sense of a bug. Starlette's <code>is_disconnected()</code> behaves exactly as designed. The <code>BaseHTTPMiddleware</code> wrapper behaves exactly as designed. The pre-armed cancel scope behaves exactly as designed. The composition is what fails — a peek-without-yielding only works when the thing below the peek can actually return without yielding. We bought that property and then unwittingly sold it back when we stacked five middleware layers between our handler and uvicorn.</p>
+
+    <p>This was verified directly. Logging was added to the handler:</p>
+
+<pre class="code-block">disconnected = <span class="kw">await</span> request.<span class="fn">is_disconnected</span>()
+logger.<span class="fn">info</span>(<span class="str">"disconnect probe"</span>, disconnected=disconnected, in_queue=…)</pre>
+
+    <p>Every iteration after a deliberate client disconnect: <code>disconnected=False</code>, <code>http.disconnect</code> sitting in the queue. Hundreds of times. The peek never reached the queue. (The logging was removed before the PR — it was a probe, not a fix.)</p>
+
+    <pre class="pullquote">A peek-without-yielding is a contract with everything below it. We stacked five things in the way and the contract dissolved.</pre>
+
+    <h2 id="s5"><span class="num">§5</span>Block, don't peek</h2>
+
+    <p>If a peek can be disarmed by a yield, the fix is to use something that cannot be disarmed by yielding — because yielding is exactly what it's expecting to do. A blocking <code>await</code> on receive runs to completion. It will get the next message. If that message is <code>http.disconnect</code>, we set a flag and exit.</p>
+
+    <p>It is structurally the same as Go's <code>select</code> against <code>ctx.Done()</code>: a parallel routine whose only job is to wait for the cancel signal, and a primary routine whose only job is to do the work and check the flag. The watcher task:</p>
+
+<pre class="code-block">disconnected = asyncio.<span class="ty">Event</span>()
+
+<span class="kw">async def</span> <span class="fn">_watch_disconnect</span>():
+    <span class="kw">try</span>:
+        <span class="kw">while not</span> disconnected.<span class="fn">is_set</span>():
+            msg = <span class="kw">await</span> request.<span class="fn">_receive</span>()
+            <span class="kw">if</span> msg.<span class="fn">get</span>(<span class="str">"type"</span>) == <span class="str">"http.disconnect"</span>:
+                disconnected.<span class="fn">set</span>()
+                <span class="kw">return</span>
+    <span class="kw">except</span> <span class="ty">OSError</span>:
+        disconnected.<span class="fn">set</span>()
+
+watcher = asyncio.<span class="fn">create_task</span>(<span class="fn">_watch_disconnect</span>())</pre>
+
+    <p>The watcher's <code>await request._receive()</code> happily blocks. The middleware chain yields, the task group opens, control returns to the loop, and the loop schedules the next ready callback. When uvicorn enqueues <code>http.disconnect</code>, the chain wakes up, the message bubbles all the way back through the layers, and the watcher sees it. Setting <code>disconnected</code> is the actionable signal.</p>
+
+    <p>The main loop changes by exactly one line:</p>
+
+<pre class="code-block"><span class="kw">while True</span>:
+    <span class="hl"><span class="kw">if</span> disconnected.<span class="fn">is_set</span>():
+        <span class="kw">break</span></span>
+    <span class="kw">try</span>:
+        message = <span class="kw">await</span> asyncio.<span class="fn">wait_for</span>(message_queue.<span class="fn">get</span>(), timeout=<span class="num">1.0</span>)
+        …
+    <span class="kw">except</span> asyncio.<span class="ty">TimeoutError</span>:
+        <span class="kw">pass</span></pre>
+
+    <div class="diagram">
+      <div class="diagram__title">Diagram C · two coroutines and an event</div>
+      <p class="diagram__caption">The watcher blocks on receive and trips a flag. The handler polls the flag once per iteration. The coupling between them is one <code>asyncio.Event</code>; no shared state, no race.</p>
+
+      <svg viewBox="0 0 680 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Two parallel coroutines, watcher and handler, sharing an asyncio.Event flag set on disconnect">
+        <defs>
+          <marker id="arrC" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" fill-opacity="0.55"/>
+          </marker>
+        </defs>
+
+        <rect x="40" y="36" width="260" height="180" rx="8" fill="var(--surface-recessed)" stroke="var(--glacier)" stroke-width="1.2"/>
+        <text x="170" y="60" text-anchor="middle" class="diag-text" font-weight="600">handler loop</text>
+        <line x1="60" y1="74" x2="280" y2="74" class="diag-line"/>
+
+        <g font-family="var(--font-mono)" font-size="11" fill="var(--text)">
+          <text x="60" y="100">while True:</text>
+          <text x="76" y="120">if flag.is_set():</text>
+          <text x="92" y="140" fill="var(--copper)" font-weight="600">break</text>
+          <text x="76" y="160">msg = await q.get()</text>
+          <text x="76" y="180">yield event(msg)</text>
+        </g>
+
+        <rect x="380" y="36" width="260" height="180" rx="8" fill="var(--surface-recessed)" stroke="var(--glacier)" stroke-width="1.2"/>
+        <text x="510" y="60" text-anchor="middle" class="diag-text" font-weight="600">watcher task</text>
+        <line x1="400" y1="74" x2="620" y2="74" class="diag-line"/>
+
+        <g font-family="var(--font-mono)" font-size="11" fill="var(--text)">
+          <text x="400" y="100">while True:</text>
+          <text x="416" y="120">m = await receive()</text>
+          <text x="416" y="140">if m["type"] == "http.disconnect":</text>
+          <text x="432" y="160" fill="var(--copper)" font-weight="600">flag.set()</text>
+          <text x="432" y="180" fill="var(--copper)" font-weight="600">return</text>
+        </g>
+
+        <rect x="290" y="240" width="100" height="28" rx="14" fill="var(--accent-dim)" stroke="var(--accent)" stroke-width="1.2"/>
+        <text x="340" y="258" text-anchor="middle" class="diag-text" font-weight="600">asyncio.Event</text>
+
+        <path d="M 200 220 L 320 245" class="diag-arrow" marker-end="url(#arrC)"/>
+        <path d="M 480 220 L 360 245" class="diag-arrow" marker-end="url(#arrC)"/>
+        <text x="208" y="234" class="diag-text diag-text--dim">poll</text>
+        <text x="450" y="234" class="diag-text diag-text--dim">set</text>
+      </svg>
+    </div>
+
+    <p>The watcher catches only <code>OSError</code> — the transport-level family (<code>BrokenPipeError</code>, <code>ConnectionResetError</code>, <code>ConnectionAbortedError</code>). Anything else is a bug somewhere up the receive chain and must propagate; silently flagging "disconnected" on an arbitrary failure would tear down a still-connected client's subscription. Starlette's own <code>StreamingResponse</code> follows the same convention internally.</p>
+
+    <div class="callout callout--trap">
+      <span class="callout__label">Trap</span>
+      <p>The watcher <em>consumes</em> from <code>receive</code>. That only works if we're the only reader. An <code>asyncio.Queue</code> is single-consumer by design — two readers means whoever wakes first eats the message and the other never sees it. A disconnect consumed by the wrong side is a disconnect we never noticed; a body chunk pulled out from under a body parser is corruption. The next section is whether there's a second reader on this channel.</p>
+    </div>
+
+    <h2 id="s6"><span class="num">§6</span>But who owns receive?</h2>
+
+    <p>This is the question a reviewer asked, and it is the one I think the whole story turns on. The watcher works if it is alone with the channel. If something else in the request lifecycle is also pulling from <code>receive</code>, the two readers split the message stream non-deterministically — a disconnect message consumed by the other side is a disconnect we never notice, and the leak is unfixed in some sessions and not others, which is worse than unfixed everywhere.</p>
+
+    <p>The plausible second reader is Starlette's own response machinery. <code>EventSourceResponse</code> inherits from <code>StreamingResponse</code>, and <code>StreamingResponse.__call__</code> historically spawns a <code>listen_for_disconnect</code> task that reads <code>receive</code> while the response is being streamed. If that task ran here, it and the watcher would be racing on the same channel.</p>
+
+    <p>The honest way to find out is to read the source. Starlette's branch is sharp:</p>
+
+<pre class="code-block"><span class="com"># starlette/responses.py — paraphrased.</span>
+spec_version = scope[<span class="str">"asgi"</span>].<span class="fn">get</span>(<span class="str">"spec_version"</span>, <span class="str">"2.0"</span>)
+<span class="kw">if</span> spec_version &gt;= (<span class="num">2</span>, <span class="num">4</span>):
+    <span class="kw">try</span>:
+        <span class="kw">await</span> self.<span class="fn">stream_response</span>(send)
+    <span class="kw">except</span> <span class="ty">OSError</span>:
+        <span class="kw">raise</span> <span class="ty">ClientDisconnect</span>()
+<span class="kw">else</span>:
+    <span class="kw">async with</span> anyio.<span class="fn">create_task_group</span>() <span class="kw">as</span> tg:
+        tg.<span class="fn">start_soon</span>(self.listen_for_disconnect, receive)  <span class="com"># races us</span>
+        tg.<span class="fn">start_soon</span>(self.stream_response, send)</pre>
+
+    <p>ASGI specification 2.4 (March 2022) introduced the convention that the server raises <code>OSError</code> from <code>send()</code> when the underlying transport is gone. Starlette adopted this in 0.27 — if the spec version is 2.4 or later, the response trusts the server to surface disconnects through <code>send</code> and stops spawning its own receive listener. If the spec version is lower, Starlette still spawns <code>listen_for_disconnect</code>, and that task would race our watcher. (<a href="./middleware-onion.html">Part 5 §6</a> walks this same branch from the middleware side.)</p>
+
+    <p>The server here is uvicorn 0.30.6, which advertises <code>spec_version="2.4"</code> (<code>uvicorn/protocols/http/h11_impl.py:205</code>, <code>httptools_impl.py:217</code>). Top branch. <code>listen_for_disconnect</code> is dead code in this process. To check the other potential consumer: FastAPI 0.135's new <code>fastapi.sse.EventSourceResponse</code> (introduced March 2026 in <a href="https://github.com/fastapi/fastapi/pull/15030">PR #15030</a>) doesn't read receive either — the SSE branch in <code>fastapi/routing.py</code> uses an <code>anyio</code> memory object stream and a <code>fail_after</code>-based keepalive, never an ASGI <code>await receive()</code>. The new first-party SSE primitive doesn't ship with its own disconnect detection. Cancellation is, by design, still Starlette's responsibility.</p>
+
+    <p>So in this stack the watcher is the sole reader on the receive channel, and the race is theoretical. The reviewer's concern is the right principled worry; the answer is "no race here," but the answer depends on a version number that isn't a property of the fix's code.</p>
+
+    <div class="diagram">
+      <div class="diagram__title">Diagram D · the branch that makes the watcher safe</div>
+      <p class="diagram__caption">In Starlette's <code>StreamingResponse.__call__</code>, ASGI ≥ 2.4 picks the top path — only <code>send</code> is used; <code>receive</code> is never touched. Below 2.4, a <code>listen_for_disconnect</code> task is spawned on <code>receive</code>, which would compete with our watcher.</p>
+
+      <svg viewBox="0 0 680 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Decision diamond showing two branches in StreamingResponse based on ASGI spec_version, one safe, one racing">
+        <defs>
+          <marker id="arrD" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" fill-opacity="0.6"/>
+          </marker>
+        </defs>
+
+        <polygon points="340,20 460,80 340,140 220,80" fill="var(--surface-recessed)" stroke="var(--border-bright)" stroke-width="1.2"/>
+        <text x="340" y="74" text-anchor="middle" class="diag-text">scope["asgi"]["spec_version"]</text>
+        <text x="340" y="92" text-anchor="middle" class="diag-text" font-weight="600">&gt;= (2, 4) ?</text>
+
+        <path d="M 220 80 L 130 80" class="diag-arrow" marker-end="url(#arrD)"/>
+        <text x="178" y="68" text-anchor="middle" class="diag-text" font-weight="600" fill="var(--moss)">YES</text>
+
+        <rect x="20" y="100" width="200" height="84" rx="6" fill="var(--moss-dim)" stroke="var(--moss)" stroke-width="1.2"/>
+        <text x="120" y="124" text-anchor="middle" class="diag-text" font-weight="600">stream_response(send)</text>
+        <text x="120" y="144" text-anchor="middle" class="diag-text">writes only</text>
+        <text x="120" y="162" text-anchor="middle" class="diag-text" fill="var(--moss)" font-weight="600">never reads receive</text>
+        <text x="120" y="178" text-anchor="middle" class="diag-text diag-text--dim">watcher is sole reader</text>
+
+        <path d="M 460 80 L 550 80" class="diag-arrow" marker-end="url(#arrD)"/>
+        <text x="500" y="68" text-anchor="middle" class="diag-text" font-weight="600" fill="var(--copper)">NO</text>
+
+        <rect x="460" y="100" width="200" height="84" rx="6" fill="var(--copper-dim)" stroke="var(--copper)" stroke-width="1.2"/>
+        <text x="560" y="124" text-anchor="middle" class="diag-text" font-weight="600">listen_for_disconnect</text>
+        <text x="560" y="144" text-anchor="middle" class="diag-text">spawned in task group</text>
+        <text x="560" y="162" text-anchor="middle" class="diag-text" fill="var(--copper)" font-weight="600">— reads receive —</text>
+        <text x="560" y="178" text-anchor="middle" class="diag-text diag-text--dim">races our watcher</text>
+
+        <rect x="200" y="220" width="280" height="44" rx="6" fill="var(--glacier-dim)" stroke="var(--glacier)" stroke-width="1.2"/>
+        <text x="340" y="240" text-anchor="middle" class="diag-text" font-weight="600">uvicorn 0.30.6 → "2.4"</text>
+        <text x="340" y="256" text-anchor="middle" class="diag-text diag-text--dim">we take the top path. the bottom is dead code here.</text>
+      </svg>
+    </div>
+
+    <div class="callout callout--warn">
+      <span class="callout__label">Subtle</span>
+      <p>The watcher's safety here is a property of versions, not of the code in the fix. A future migration to daphne &lt;3 or hypercorn &lt;0.14 — or any future Starlette release that decides to spawn a receive listener again — turns this back into a real race overnight. Document the assumption in the docstring; future-you will not remember it.</p>
+    </div>
+
+    <h3>The fix that lives at the response layer</h3>
+
+    <p>If the question is "who owns receive?", the most honest answer is: whoever the ASGI runtime hands the channel to. Handlers receive it indirectly, through the request object. Response classes receive it directly, as a function parameter. That difference is structural — and it is exactly why an older <code>/events</code> endpoint in the same codebase has been doing the right thing for a long time without ever needing this fix.</p>
+
+    <p>That endpoint's custom SSE response class is its own ASGI callable:</p>
+
+<pre class="code-block"><span class="kw">class</span> <span class="ty">SSEResponse</span>(<span class="ty">Response</span>):
+    <span class="kw">async def</span> <span class="fn">__call__</span>(self, scope, receive, send) -&gt; <span class="kw">None</span>:
+        disconnected = asyncio.<span class="ty">Event</span>()
+
+        <span class="kw">async def</span> <span class="fn">watch_disconnect</span>():
+            <span class="kw">while not</span> disconnected.<span class="fn">is_set</span>():
+                <span class="hl">message = <span class="kw">await</span> <span class="fn">receive</span>()  <span class="com"># this receive, the one we own</span></span>
+                <span class="kw">if</span> message[<span class="str">"type"</span>] == <span class="str">"http.disconnect"</span>:
+                    disconnected.<span class="fn">set</span>()
+                    <span class="kw">return</span>
+
+        disconnect_task = asyncio.<span class="fn">create_task</span>(<span class="fn">watch_disconnect</span>())
+        ...</pre>
+
+    <p>The <code>receive</code> in <code>watch_disconnect</code> is the parameter passed to <code>__call__</code>. It is, by construction, the only reference to that channel in this layer. The body of the response <em>is</em> the listener. Ownership is not something the code has to assert; it is a property of the function signature. When the ASGI runtime sends us <code>receive</code>, we are responsible for it for the lifetime of this call, and no one else has a handle to it.</p>
+
+    <p>That is the principled location for a disconnect watcher in an ASGI app. The handler-level watcher is what you write when you can't move to the response layer cheaply; the response-level watcher is what you write when you can. In a follow-up, consolidating the streaming endpoint onto that response-layer shape — or onto an equivalent that wraps <code>EventSourceResponse</code> — removes the receive-ownership ambiguity entirely, and removes the dependency on the ASGI 2.4 escape clause. Same fix; one layer down; structurally smaller surface for someone to break later.</p>
+
+    <h3>The fix one layer further up</h3>
+
+    <p>There's a third option, more invasive again: rewrite the <code>BaseHTTPMiddleware</code> layers as pure ASGI callables. That doesn't <em>resolve</em> the ownership question — it doesn't matter who reads receive if no one does — but it removes the load-bearing buffering bug that made the textbook <code>is_disconnected()</code> peek fail in §4, which is what put us in the position of needing any watcher at all.</p>
+
+    <p>Starlette's maintainers track this in <a href="https://github.com/Kludex/starlette/discussions/2160">Discussion #2160</a> and <a href="https://github.com/Kludex/starlette/discussions/1729">#1729</a>, and explicitly recommend pure ASGI for middleware adjacent to streaming responses — both for the disconnect-propagation reasons that caused our leak and for a 2-5× throughput win they observe in benchmarks. The pattern is uglier in 30-line bursts and considerably simpler in aggregate; the cost is per-middleware care for <code>ContextVar</code>s, <code>request.state</code> mutation, exception ordering, and structured-logging binding. Some layers convert easily; the ones that mutate request state are the work.</p>
+
+    <p>If all five were converted, two things change. <code>is_disconnected()</code>'s pre-armed-peek trick would start working again, because the middleware-induced yield disappears. And <code>EventSourceResponse</code>'s own disconnect propagation — which, recall, relies on Starlette's <code>send</code>-raises-<code>OSError</code> path — would propagate cleanly without being swallowed by middleware-level buffering. The watcher becomes redundant. Whether you still want it as defense-in-depth is a judgment call.</p>
+
+    <h3>Three fixes, ranked by blast radius</h3>
+
+    <div class="table-wrap"><div class="table-scroll">
+    <table class="data">
+      <thead>
+        <tr>
+          <th>Fix</th>
+          <th>Lives at</th>
+          <th>Resolves</th>
+          <th>Cost</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>handler watcher (the shipped fix)</td>
+          <td>route handler</td>
+          <td>the leak</td>
+          <td>40 lines; depends on ASGI ≥ 2.4</td>
+        </tr>
+        <tr>
+          <td>response-level watcher</td>
+          <td>custom Response class</td>
+          <td>the leak + receive ownership ambiguity</td>
+          <td>consolidate the streaming endpoint onto the response-layer class; touches every caller</td>
+        </tr>
+        <tr>
+          <td>pure-ASGI middleware</td>
+          <td>each middleware module</td>
+          <td>the leak + the buffering bug + restores is_disconnected()</td>
+          <td>rewrite remaining layers, per-layer ContextVar/auth/logging care</td>
+        </tr>
+      </tbody>
+    </table>
+    </div></div>
+
+    <p>The shape of the fix tells you the shape of the regret. Handler-level watcher: ships today, fragile to runtime version. Response-level watcher: principled, single owner, requires a refactor every caller has to follow. Pure-ASGI middleware: most principled, restores the framework's documented behavior, biggest blast radius. We took the smallest one — and the post you're reading is the documentation that explains why the smallest one is also the one that will need revisiting first.</p>
+
+    <h2 id="s7"><span class="num">§7</span>What it cost — and why one second</h2>
+
+    <p>The reproduction is an end-to-end harness: five concurrent SSE clients, one chunk read each, abrupt connection drop, count of <code>read_stream</code> tasks via <code>asyncio.all_tasks()</code> at intervals. Before the fix, the tasks never go away. After:</p>
+
+    <div class="table-wrap"><div class="table-scroll">
+    <table class="data">
+      <thead>
+        <tr>
+          <th>Measurement</th>
+          <th>Before the fix</th>
+          <th>After the fix</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>tasks immediately after 5 disconnects</td><td>5</td><td>5</td></tr>
+        <tr><td>tasks at t + 1 s</td><td>5</td><td>0</td></tr>
+        <tr><td>tasks at t + 10 s</td><td>5 (permanent)</td><td>0</td></tr>
+        <tr><td>cleanup latency</td><td>∞</td><td>~1006 ms</td></tr>
+      </tbody>
+    </table>
+    </div></div>
+
+    <p>The interesting number is 1006 ms. Not because that is how long disconnect detection takes — the watcher trips on disconnect within microseconds — but because of how the watcher couples to the rest of the loop. The handler checks the flag at the top of each iteration; iterations are paced by <code>asyncio.wait_for(queue.get(), timeout=1.0)</code>. On an idle channel, the loop is sleeping inside <code>wait_for</code> when the watcher trips. The flag becomes <code>True</code> instantly, but nobody is reading it yet. The next iteration only happens when <code>wait_for</code> times out a second later.</p>
+
+    <p>You can drive the latency down to nothing by replacing the timeout-based poll with an <code>asyncio.wait({queue.get(), event.wait()}, return_when=FIRST_COMPLETED)</code> — wake on either a real message or a disconnect, whichever comes first. The shipped fix doesn't. The simplicity argument is straightforward: a second of leak time across a transient disconnect is dramatically less interesting than the leak we just stopped, and the implementation has one fewer thing that can race. Worth it.</p>
+
+    <h2 id="s8"><span class="num">§8</span>What's still wrong</h2>
+
+    <p>The handler now exits cleanly on disconnect, but the cleanup it triggers — <code>cancel_func()</code> — is a synchronous wrapper around a fire-and-forget <code>asyncio.create_task(cancel_async())</code> inside the broadcaster. That has its own problem, structurally identical in shape to the watcher's: a task you create and don't hold a reference to is a candidate for the garbage collector, and a cleanup task that gets reaped mid-run leaves the subscription it was supposed to cancel still listening. An existing partial fix — a module-level <code>set()</code> that holds strong references until the cleanup completes — keeps it from biting in practice, but a real fix wants the broadcaster's <code>subscribe</code> to return an async cancel function and have callers <code>await</code> it. Bigger surface area, separate change.</p>
+
+    <p>There's also a second, narrower issue surfaced in follow-up review: if <code>request._receive()</code> raises a non-<code>OSError</code> exception, the watcher task finishes with the exception unhandled. If the main loop later closes for another reason (an upstream cancellation, a server shutdown), the <code>await watcher</code> in the cleanup re-raises that exception before <code>cancel_func()</code> runs, and the Redis subscription leaks. The fix is to wrap <code>await watcher</code> in a <code>try/except/finally</code> that always reaches <code>cancel_func()</code>. Worth landing.</p>
+
+    <p>And then the broader story, the one §6 alludes to. The remaining three <code>BaseHTTPMiddleware</code> layers are still there, still inserting yields on every receive call, still buffering streaming responses through anyio memory channels, still swallowing client disconnects on the response side. The pure-ASGI migration is the right next move, and it is the move that turns this watcher into either defense-in-depth or dead code. Either outcome is fine. The middleware story is the one that determines which.</p>
+
+    <h2 id="s9"><span class="num">§9</span>Take with you</h2>
+
+    <ul class="takeaways">
+      <li><strong>Peek-without-yielding is a contract.</strong> Pre-armed cancel scopes work exactly when the call inside can return without yielding. If anything in the stack below adds a yield, the peek is silently replaced by "no, nothing here."</li>
+      <li><strong><code>BaseHTTPMiddleware</code> adds a yield.</strong> Every layer opens an <code>anyio</code> task group on receive; every yield disarms a pre-arm. Five layers means the peek dies five times over.</li>
+      <li><strong>If a peek is unreliable, a watcher is reliable — but only if it's alone.</strong> An <code>asyncio.Queue</code> with two consumers splits the message stream non-deterministically. Before you add a watcher, verify nothing else is reading from the same channel.</li>
+      <li><strong>The fix that owns receive cleanly is the response-layer fix.</strong> When the ASGI runtime hands you <code>receive</code> as a function parameter, ownership is structural. When you reach for it through <code>request._receive</code>, ownership is something you have to verify case by case.</li>
+      <li><strong>ASGI 2.4 is doing load-bearing work for this fix.</strong> Starlette's <code>StreamingResponse</code> stops spawning its own <code>receive</code> listener on spec ≥ 2.4 and trusts <code>send</code>-raises-<code>OSError</code> instead. Anywhere you depend on "we're the only reader," verify the spec version that makes that true.</li>
+    </ul>
+
+    <div class="bridge">
+      <div class="bridge__label">Read next</div>
+      <div class="bridge__title">The pure-ASGI migration — five middleware layers, three remaining, and what changes when the textbook fix starts working again</div>
+      <p>The post you just read is one half of the story. The other half is what happens when the load-bearing buffering bug under all of this goes away. Converting <code>BaseHTTPMiddleware</code> layers to pure ASGI callables is the canonical Starlette move; it's also the move that turns this entire PR into defense-in-depth. Subject of the next field report.</p>
+    </div>
+
+  </section>
+</article>
+
+<script>
+  // Theme toggle — explicit, with localStorage persistence.
+  (function () {
+    const root = document.documentElement;
+    const key = 'theme-pcd';
+    const saved = localStorage.getItem(key);
+    if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
+    const btn = document.querySelector('[data-theme-toggle]');
+    btn && btn.addEventListener('click', () => {
+      const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      localStorage.setItem(key, next);
+    });
+  })();
+
+  // Reading progress.
+  (function () {
+    const bar = document.getElementById('progress');
+    const compute = () => {
+      const h = document.documentElement;
+      const max = h.scrollHeight - h.clientHeight;
+      const pct = max <= 0 ? 0 : (h.scrollTop || document.body.scrollTop) / max;
+      bar.style.width = (pct * 100).toFixed(2) + '%';
+    };
+    let ticking = false;
+    document.addEventListener('scroll', () => {
+      if (!ticking) {
+        requestAnimationFrame(() => { compute(); ticking = false; });
+        ticking = true;
+      }
+    }, { passive: true });
+    compute();
+  })();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Middleware is an Onion — Starlette's request stack, and where it leaks</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Fragment+Mono:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'Spectral', Georgia, serif;
+    --font-mono: 'Fragment Mono', 'SF Mono', Consolas, monospace;
+  }
+
+  html[data-theme="light"] {
+    --bg: #efe6d6;
+    --bg-tint: #e6dac6;
+    --surface: #faf4e9;
+    --surface-elevated: #fffdf7;
+    --surface-recessed: #e3d7c2;
+    --border: rgba(40, 26, 18, 0.12);
+    --border-bright: rgba(40, 26, 18, 0.26);
+    --text: #241a12;
+    --text-bright: #160f0a;
+    --text-dim: #5e4d3c;
+    --text-muted: #8a7660;
+
+    --accent: #c65a2b;
+    --accent-dim: rgba(198, 90, 43, 0.10);
+    --accent-bright: #d96e3c;
+    --indigo: #3a4a6b;
+    --indigo-dim: rgba(58, 74, 107, 0.12);
+    --indigo-bright: #4d6088;
+    --gold: #a8791f;
+    --gold-dim: rgba(168, 121, 31, 0.12);
+    --moss: #5e6b3a;
+    --rust: #8b3a1f;
+  }
+
+  html[data-theme="dark"] {
+    --bg: #1a1410;
+    --bg-tint: #241c15;
+    --surface: #241c15;
+    --surface-elevated: #2c231a;
+    --surface-recessed: #120d09;
+    --border: rgba(235, 220, 200, 0.11);
+    --border-bright: rgba(235, 220, 200, 0.24);
+    --text: #ece0cf;
+    --text-bright: #fcf4e6;
+    --text-dim: #b8a487;
+    --text-muted: #8a7660;
+
+    --accent: #e8855a;
+    --accent-dim: rgba(232, 133, 90, 0.14);
+    --accent-bright: #f29c73;
+    --indigo: #8198c0;
+    --indigo-dim: rgba(129, 152, 192, 0.14);
+    --indigo-bright: #9bb0d4;
+    --gold: #d8b257;
+    --gold-dim: rgba(216, 178, 87, 0.14);
+    --moss: #9fb070;
+    --rust: #cc7050;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse at 15% 0%, var(--accent-dim) 0%, transparent 48%),
+      radial-gradient(ellipse at 85% 10%, var(--indigo-dim) 0%, transparent 52%);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 20px;
+    line-height: 1.68;
+    -webkit-font-smoothing: antialiased;
+    overflow-wrap: break-word;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+  body * { min-width: 0; }
+
+  .progress {
+    position: fixed; top: 0; left: 0; width: 0%; height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--indigo));
+    z-index: 100; transition: width 0.08s linear;
+  }
+
+  .site-header {
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex; justify-content: space-between; align-items: center;
+    max-width: 1100px; margin: 0 auto;
+  }
+  .site-header__title {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 400;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--text-muted);
+  }
+  .theme-toggle {
+    background: none; border: 1px solid var(--border-bright);
+    color: var(--text-dim); padding: 6px 14px; border-radius: 4px;
+    cursor: pointer; font-family: var(--font-mono);
+    font-size: 11px; letter-spacing: 1px; transition: all 0.2s;
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+
+  .page { max-width: 720px; margin: 0 auto; padding: 60px 32px 120px; }
+
+  .toc {
+    background: var(--surface-recessed); border: 1px solid var(--border);
+    border-radius: 8px; padding: 22px 28px; margin-bottom: 56px;
+  }
+  .toc__label {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 400;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--text-muted);
+    margin-bottom: 14px;
+  }
+  .toc ol {
+    list-style: none; counter-reset: toc;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px;
+  }
+  @media (max-width: 560px) { .toc ol { grid-template-columns: 1fr; } }
+  .toc li { counter-increment: toc; line-height: 1.4; }
+  .toc a {
+    color: var(--text-dim); text-decoration: none; font-size: 16px;
+    display: flex; gap: 12px; align-items: baseline; padding: 4px 0;
+    transition: color 0.15s;
+  }
+  .toc a:hover { color: var(--accent); }
+  .toc a::before {
+    content: counter(toc, decimal-leading-zero);
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--accent); font-weight: 400; min-width: 24px;
+  }
+
+  .hero { margin-bottom: 40px; padding-bottom: 36px; border-bottom: 1px solid var(--border); }
+  .hero__series {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 400;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--accent);
+    margin-bottom: 20px;
+  }
+  .hero__series::before {
+    content: ''; display: inline-block; width: 24px; height: 1px;
+    background: var(--accent); vertical-align: middle; margin-right: 12px;
+    transform: translateY(-2px);
+  }
+  .hero__title {
+    font-family: var(--font-body); font-weight: 700;
+    font-size: clamp(38px, 6vw, 58px); line-height: 1.04;
+    letter-spacing: -0.5px; color: var(--text-bright);
+    margin-bottom: 18px; text-wrap: balance;
+  }
+  .hero__subtitle {
+    font-style: italic; font-size: 23px; line-height: 1.4;
+    color: var(--text-dim); max-width: 600px; margin-bottom: 28px;
+  }
+  .hero__meta {
+    font-family: var(--font-mono); font-size: 12px; color: var(--text-muted);
+    display: flex; gap: 20px; flex-wrap: wrap;
+  }
+  .hero__meta span { display: inline-flex; align-items: center; gap: 6px; }
+  .hero__meta span::before {
+    content: ''; width: 4px; height: 4px;
+    background: var(--text-muted); border-radius: 50%;
+  }
+  .hero__meta span:first-child::before { display: none; }
+
+  .prose p { margin-bottom: 1.3em; text-wrap: pretty; }
+  .prose strong { color: var(--text-bright); font-weight: 600; }
+  .prose em { font-style: italic; color: var(--text-bright); }
+  .prose a {
+    color: var(--accent); text-decoration: underline;
+    text-decoration-thickness: 1px; text-underline-offset: 3px;
+  }
+  .prose code {
+    font-family: var(--font-mono); font-size: 0.76em;
+    background: var(--indigo-dim); color: var(--indigo-bright);
+    padding: 1px 6px; border-radius: 3px;
+  }
+
+  .lead { font-size: 23px; line-height: 1.5; color: var(--text-bright); margin-bottom: 36px; }
+
+  h2 {
+    font-family: var(--font-body); font-weight: 700; font-size: 34px;
+    line-height: 1.12; letter-spacing: -0.3px; color: var(--text-bright);
+    margin-top: 64px; margin-bottom: 8px; text-wrap: balance;
+    scroll-margin-top: 24px;
+  }
+  h2 .num {
+    font-family: var(--font-mono); font-size: 13px; font-weight: 400;
+    color: var(--accent); letter-spacing: 1px; display: block; margin-bottom: 6px;
+  }
+  h3 {
+    font-family: var(--font-body); font-weight: 600; font-size: 24px;
+    line-height: 1.3; color: var(--text-bright);
+    margin-top: 36px; margin-bottom: 12px;
+  }
+
+  .code-block {
+    font-family: var(--font-mono); font-size: 12px; line-height: 1.7;
+    background: var(--surface-recessed); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 16px 20px; margin: 24px 0;
+    overflow-x: auto; white-space: pre;
+  }
+  .code-block .kw  { color: var(--rust); }
+  .code-block .com { color: var(--text-muted); font-style: italic; }
+  .code-block .str { color: var(--moss); }
+  .code-block .num { color: var(--gold); }
+  .code-block .fn  { color: var(--indigo-bright); }
+  .code-block .ty  { color: var(--accent); }
+  .code-block .hl  { background: var(--accent-dim); padding: 0 4px; border-radius: 2px; }
+
+  .code-caption {
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+    margin-top: -16px; margin-bottom: 28px; padding-left: 4px; letter-spacing: 0.3px;
+  }
+
+  .pullquote {
+    margin: 48px 0; padding: 0 0 0 28px;
+    border-left: 3px solid var(--accent);
+    font-style: italic; font-size: 26px; line-height: 1.38;
+    color: var(--text-bright);
+  }
+
+  .callout {
+    margin: 32px 0; padding: 18px 22px;
+    background: var(--indigo-dim); border-left: 3px solid var(--indigo);
+    border-radius: 0 8px 8px 0;
+    font-size: 18px; line-height: 1.55;
+  }
+  .callout--warn { background: var(--gold-dim); border-left-color: var(--gold); }
+  .callout--trap { background: var(--accent-dim); border-left-color: var(--accent); }
+  .callout__label {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 400;
+    letter-spacing: 1.8px; text-transform: uppercase;
+    color: var(--indigo-bright); margin-bottom: 6px; display: block;
+  }
+  .callout--warn .callout__label { color: var(--gold); }
+  .callout--trap .callout__label { color: var(--accent); }
+  .callout p { margin-bottom: 0; }
+  .callout p + p { margin-top: 10px; }
+  .callout code {
+    font-family: var(--font-mono); font-size: 0.76em;
+    background: rgba(0,0,0,0.05); color: inherit;
+    padding: 1px 5px; border-radius: 3px;
+  }
+  html[data-theme="dark"] .callout code { background: rgba(255,255,255,0.07); }
+
+  .diagram {
+    margin: 40px 0; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 28px 24px;
+  }
+  .diagram__title {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 400;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 4px;
+  }
+  .diagram__caption {
+    font-family: var(--font-body); font-size: 16px; font-style: italic;
+    color: var(--text-dim); margin-bottom: 22px; max-width: 580px;
+  }
+  .diagram svg { display: block; width: 100%; height: auto; max-width: 100%; }
+
+  .table-wrap {
+    margin: 32px 0; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  }
+  .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.data {
+    width: 100%; border-collapse: collapse;
+    font-family: var(--font-body); font-size: 16px; line-height: 1.5;
+  }
+  table.data th {
+    background: var(--surface-recessed);
+    font-family: var(--font-mono); font-size: 10px; font-weight: 400;
+    text-transform: uppercase; letter-spacing: 1.4px; color: var(--text-dim);
+    text-align: left; padding: 12px 16px;
+    border-bottom: 2px solid var(--border-bright); white-space: nowrap;
+  }
+  table.data td {
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+    vertical-align: top; color: var(--text);
+  }
+  table.data tr:last-child td { border-bottom: none; }
+  table.data tr:nth-child(even) td { background: var(--accent-dim); }
+  table.data td:first-child {
+    font-family: var(--font-mono); font-size: 13px;
+    color: var(--accent); white-space: nowrap;
+  }
+
+  .takeaways {
+    margin: 32px 0; padding: 24px 28px;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border); border-radius: 10px;
+    list-style: none;
+  }
+  .takeaways li {
+    font-size: 19px; padding: 10px 0 10px 22px;
+    border-bottom: 1px dashed var(--border);
+    position: relative;
+  }
+  .takeaways li:last-child { border-bottom: none; }
+  .takeaways li::before {
+    content: '·'; color: var(--accent); font-weight: 600;
+    font-family: var(--font-mono);
+    position: absolute; left: 4px; top: 10px;
+  }
+
+  .bridge {
+    margin-top: 80px; padding: 36px 32px;
+    background: var(--surface-elevated); border: 1px solid var(--border);
+    border-radius: 12px; border-left: 4px solid var(--accent);
+  }
+  .bridge__label {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 400;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 12px;
+  }
+  .bridge__title {
+    font-weight: 700; font-size: 26px;
+    color: var(--text-bright); margin-bottom: 10px;
+  }
+  .bridge p { color: var(--text-dim); margin-bottom: 0; font-size: 18px; }
+  .bridge a { color: var(--accent); }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .hero, .toc, .section { animation: fadeUp 0.5s ease-out both; }
+  .toc { animation-delay: 0.05s; }
+  .section { animation-delay: 0.10s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .page { padding: 36px 20px 80px; }
+    .site-header { padding: 14px 20px; }
+    body { font-size: 18px; }
+    .lead { font-size: 20px; }
+    h2 { font-size: 27px; margin-top: 48px; }
+    h3 { font-size: 20px; }
+    .pullquote { font-size: 21px; padding-left: 18px; }
+    .code-block { font-size: 11px; padding: 14px 16px; }
+    .diagram { padding: 20px 14px; }
+  }
+
+  .diag-text { font-family: var(--font-mono); font-size: 11px; fill: var(--text); }
+  .diag-text--dim { fill: var(--text-dim); }
+  .diag-text--label { font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+  .diag-line { stroke: var(--border-bright); stroke-width: 1.2; fill: none; }
+  .diag-arrow { stroke: var(--text-dim); stroke-width: 1.2; fill: none; }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+
+<header class="site-header">
+  <span class="site-header__title">Python Concurrency Decoded</span>
+  <button class="theme-toggle" data-theme-toggle aria-label="Toggle theme">◐ Theme</button>
+</header>
+
+<article class="page prose">
+
+  <header class="hero">
+    <div class="hero__series">Part 5 of 5</div>
+    <h1 class="hero__title">Middleware is an Onion</h1>
+    <p class="hero__subtitle">A Starlette middleware is an ASGI app wrapping an ASGI app. A response is an ASGI app too. <code>BaseHTTPMiddleware</code> bridges them with a task group and a memory stream — convenient, and the exact place a streaming disconnect goes to die.</p>
+    <div class="hero__meta">
+      <span>~15 min read</span>
+      <span>Starlette 1.0 · anyio 4.x</span>
+      <span>Assumes: Parts 3 &amp; 4</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <div class="toc__label">In this post</div>
+    <ol>
+      <li><a href="#s1">An app wrapping an app</a></li>
+      <li><a href="#s2">A response is an app too</a></li>
+      <li><a href="#s3">The convenience that costs</a></li>
+      <li><a href="#s4"><code>receive_or_disconnect</code>, decoded</a></li>
+      <li><a href="#s5">Where the onion leaks</a></li>
+      <li><a href="#s6">The <code>spec_version</code> escape hatch</a></li>
+      <li><a href="#s7">Pure ASGI, and when to pay</a></li>
+      <li><a href="#s8">Take with you</a></li>
+    </ol>
+  </nav>
+
+  <section class="section">
+
+    <p class="lead">Part 3 called the request stack "four layers, each adding opinions." This is the post that opens the layers and reads them. By the end, the leak from the field report isn't a surprise — it's the only thing that <em>could</em> have happened.</p>
+
+    <p>Everything here is built on two facts. From Part 3: an ASGI app is a callable <code>async def app(scope, receive, send)</code>, and HTTP is three message types flowing over <code>receive</code> and <code>send</code>. From Part 4: <code>async</code> doesn't mean "yields," anyio cancels lexical scopes by deferring delivery to the next checkpoint, and a task group's cost is paid at the join. Keep both within reach; this post spends them continuously.</p>
+
+    <h2 id="s1"><span class="num">§1</span>An app wrapping an app</h2>
+
+    <p>The ASGI signature is recursive in the most useful way: anything with the shape <code>(scope, receive, send)</code> can stand in for anything else with that shape. A middleware is just an app that holds a reference to the next app and calls it. The minimal pure-ASGI middleware is six lines and adds nothing:</p>
+
+<pre class="code-block"><span class="kw">class</span> <span class="ty">Passthrough</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, app):
+        self.app = app                       <span class="com"># the next layer in</span>
+
+    <span class="kw">async def</span> <span class="fn">__call__</span>(self, scope, receive, send):
+        <span class="kw">await</span> self.<span class="fn">app</span>(scope, receive, send)   <span class="com"># hand the same three down</span></pre>
+
+    <p>To <em>do</em> something, a middleware wraps one of the three before passing it down. Wrap <code>send</code> to observe or rewrite responses; wrap <code>receive</code> to observe or inject requests; read <code>scope</code> to route. Here is a real one — request timing, in pure ASGI:</p>
+
+<pre class="code-block"><span class="kw">class</span> <span class="ty">TimingMiddleware</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, app):
+        self.app = app
+
+    <span class="kw">async def</span> <span class="fn">__call__</span>(self, scope, receive, send):
+        <span class="kw">if</span> scope[<span class="str">"type"</span>] != <span class="str">"http"</span>:
+            <span class="kw">await</span> self.<span class="fn">app</span>(scope, receive, send)
+            <span class="kw">return</span>
+        start = time.<span class="fn">monotonic</span>()
+
+        <span class="kw">async def</span> <span class="fn">send_wrapper</span>(message):
+            <span class="kw">if</span> message[<span class="str">"type"</span>] == <span class="str">"http.response.start"</span>:
+                <span class="fn">record_status</span>(message[<span class="str">"status"</span>])
+            <span class="kw">await</span> <span class="fn">send</span>(message)            <span class="com"># straight to the wire</span>
+
+        <span class="kw">try</span>:
+            <span class="kw">await</span> self.<span class="fn">app</span>(scope, receive, send_wrapper)
+        <span class="kw">finally</span>:
+            <span class="fn">observe_duration</span>(time.<span class="fn">monotonic</span>() - start)</pre>
+    <p class="code-caption">Pure ASGI: <code>send_wrapper</code> forwards each message straight to the real <code>send</code>. No buffering, no second task. The bytes the app emits go to the wire untouched.</p>
+
+    <p>Notice what this does <em>not</em> do: it does not collect the response, does not spawn a task, does not interpose a queue. Each message the downstream app sends passes through <code>send_wrapper</code> and out to the real <code>send</code> in the same call, on the same task. When the client vanishes and the real <code>send</code> raises <code>OSError</code>, it raises straight up through <code>self.app</code> — the app finds out immediately. Hold that thought; it's the whole contrast with §3.</p>
+
+    <div class="diagram">
+      <div class="diagram__title">Diagram A · the onion</div>
+      <p class="diagram__caption">Each middleware is an ASGI app holding the next. <code>scope</code>/<code>receive</code>/<code>send</code> thread inward to the handler; response messages thread back out. A pure-ASGI layer passes them through on the same task.</p>
+
+      <svg viewBox="0 0 680 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Nested ASGI apps, each wrapping the next, with scope receive send threading inward to the handler">
+        <defs>
+          <marker id="arrA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" fill-opacity="0.55"/>
+          </marker>
+        </defs>
+
+        <rect x="30" y="30" width="620" height="190" rx="10" fill="none" stroke="var(--accent)" stroke-width="1.4"/>
+        <text x="46" y="50" class="diag-text" fill="var(--accent)" font-weight="600">uvicorn</text>
+
+        <rect x="80" y="62" width="520" height="130" rx="9" fill="none" stroke="var(--indigo)" stroke-width="1.2"/>
+        <text x="96" y="82" class="diag-text" fill="var(--indigo-bright)">middleware A</text>
+
+        <rect x="130" y="92" width="420" height="72" rx="8" fill="none" stroke="var(--indigo)" stroke-width="1.2"/>
+        <text x="146" y="112" class="diag-text" fill="var(--indigo-bright)">middleware B</text>
+
+        <rect x="190" y="120" width="300" height="30" rx="6" fill="var(--accent-dim)" stroke="var(--accent)" stroke-width="1.2"/>
+        <text x="340" y="139" text-anchor="middle" class="diag-text" font-weight="600">handler (innermost app)</text>
+
+        <path d="M 300 235 L 300 152" class="diag-arrow" marker-end="url(#arrA)"/>
+        <text x="300" y="247" text-anchor="middle" class="diag-text diag-text--dim">scope, receive →</text>
+
+        <path d="M 390 152 L 390 235" class="diag-arrow" marker-end="url(#arrA)"/>
+        <text x="392" y="247" text-anchor="start" class="diag-text diag-text--dim">← send</text>
+      </svg>
+    </div>
+
+    <h2 id="s2"><span class="num">§2</span>A response is an app too</h2>
+
+    <p>The recursion goes one layer further than most people notice. When your handler <code>return</code>s a <code>Response</code>, the framework doesn't read its bytes. It <em>calls</em> it — because a Starlette <code>Response</code> is itself an ASGI app. Real source:</p>
+
+<pre class="code-block"><span class="com"># starlette/responses.py — Response.__call__</span>
+<span class="kw">async def</span> <span class="fn">__call__</span>(self, scope, receive, send) -&gt; <span class="kw">None</span>:
+    <span class="kw">await</span> <span class="fn">send</span>({<span class="str">"type"</span>: <span class="str">"http.response.start"</span>, <span class="str">"status"</span>: self.status_code, ...})
+    <span class="kw">await</span> <span class="fn">send</span>({<span class="str">"type"</span>: <span class="str">"http.response.body"</span>, <span class="str">"body"</span>: self.body})</pre>
+
+    <p>So the "return a response" model and the "be an ASGI app" model are the same model. A route handler is an app whose body produces a <code>Response</code>, which is an app that emits the messages. This is why the SSE endpoints in the field report can hand back either a <code>StreamingResponse</code> subclass or a bare async generator — both bottom out in something that gets <code>__call__</code>ed with <code>(scope, receive, send)</code>. And it's why a response can run its <em>own</em> disconnect listener on <code>receive</code>: it has one, because it's an app.</p>
+
+    <p>Which raises the question the rest of the post answers: if both middleware and responses are apps that get the real <code>receive</code> and <code>send</code>, where does the clean pass-through of §1 break? Answer: the moment a middleware wants to treat the response as a <code>Request</code>/<code>Response</code> pair instead of as a stream of messages. That's the convenience <code>BaseHTTPMiddleware</code> sells.</p>
+
+    <h2 id="s3"><span class="num">§3</span>The convenience that costs</h2>
+
+    <p><code>BaseHTTPMiddleware</code> exists because pure ASGI is tedious for the common case. You usually want to write <code>async def dispatch(request, call_next): response = await call_next(request); ...; return response</code> — a function that takes a <code>Request</code> object and returns a <code>Response</code> object, like a tiny handler. But the ASGI app underneath doesn't deal in objects; it deals in message callbacks. To offer the object API, <code>BaseHTTPMiddleware</code> has to <em>adapt</em> the callback world into the object world. That adapter is the whole problem.</p>
+
+    <p>The adapter runs the downstream app in a <strong>separate task</strong>, captures the messages it sends into a <strong>memory object stream</strong> (Part 4 §7), and rebuilds them into a <code>Response</code> on the other side. Real source, condensed to the spine:</p>
+
+<pre class="code-block"><span class="com"># starlette/middleware/base.py — BaseHTTPMiddleware.__call__ (spine)</span>
+send_stream, recv_stream = anyio.<span class="fn">create_memory_object_stream</span>()   <span class="com"># buffer size 0</span>
+
+<span class="kw">async def</span> <span class="fn">coro</span>():
+    <span class="kw">with</span> send_stream:
+        <span class="kw">await</span> self.<span class="fn">app</span>(scope, receive_or_disconnect, send_no_error)  <span class="com"># app's send → stream</span>
+
+<span class="kw">async with</span> anyio.<span class="fn">create_task_group</span>() <span class="kw">as</span> task_group:
+    task_group.<span class="fn">start_soon</span>(coro)                       <span class="com"># downstream app runs HERE</span>
+    message = <span class="kw">await</span> recv_stream.<span class="fn">receive</span>()           <span class="com"># middleware reads it back out</span>
+    ...
+    response = <span class="ty">_StreamingResponse</span>(status=message[<span class="str">"status"</span>], content=body_stream())
+    <span class="hl"><span class="kw">await</span> <span class="fn">response</span>(scope, wrapped_receive, send)</span>      <span class="com"># re-emitted to the REAL send</span></pre>
+    <p class="code-caption">The downstream app no longer talks to the wire. Its <code>send</code> writes into a memory stream; a second response object, driven by the middleware, reads that stream and writes to the real <code>send</code>.</p>
+
+    <p>Trace one response chunk. The handler calls its <code>send</code> — which is <code>send_no_error</code> — which does <code>await send_stream.send(message)</code>. The memory stream has buffer size zero (Part 4 §7: a rendezvous), so that <code>send</code> blocks until the middleware's <code>body_stream</code> calls <code>recv_stream.receive()</code> and takes it. The middleware, wrapped in its own <code>_StreamingResponse</code>, then writes the chunk to the <em>real</em> <code>send</code>. Every byte the app produces crosses a task boundary and a rendezvous before it reaches uvicorn.</p>
+
+    <div class="diagram">
+      <div class="diagram__title">Diagram B · the bridge</div>
+      <p class="diagram__caption">The downstream app runs in a child task; its <code>send</code> writes into a zero-buffer memory stream. The middleware (host task) reads the stream and re-emits through a second response to the real <code>send</code>. Two tasks, one rendezvous, between the app and the wire.</p>
+
+      <svg viewBox="0 0 680 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="BaseHTTPMiddleware bridge: child task running the app sends into a memory stream, host task reads it and writes to the real send">
+        <defs>
+          <marker id="arrB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" fill-opacity="0.55"/>
+          </marker>
+        </defs>
+
+        <rect x="30" y="40" width="200" height="90" rx="8" fill="var(--accent-dim)" stroke="var(--accent)" stroke-width="1.2"/>
+        <text x="130" y="62" text-anchor="middle" class="diag-text" font-weight="600">child task: coro()</text>
+        <text x="130" y="82" text-anchor="middle" class="diag-text diag-text--dim">runs self.app(...)</text>
+        <text x="130" y="100" text-anchor="middle" class="diag-text diag-text--dim">handler emits chunks</text>
+        <text x="130" y="118" text-anchor="middle" class="diag-text" fill="var(--accent)">send_no_error →</text>
+
+        <rect x="280" y="62" width="120" height="46" rx="6" fill="var(--gold-dim)" stroke="var(--gold)" stroke-width="1.2"/>
+        <text x="340" y="82" text-anchor="middle" class="diag-text" font-weight="600">memory stream</text>
+        <text x="340" y="99" text-anchor="middle" class="diag-text diag-text--dim">buffer = 0 (rendezvous)</text>
+
+        <rect x="450" y="40" width="200" height="90" rx="8" fill="var(--indigo-dim)" stroke="var(--indigo)" stroke-width="1.2"/>
+        <text x="550" y="62" text-anchor="middle" class="diag-text" font-weight="600">host task: middleware</text>
+        <text x="550" y="82" text-anchor="middle" class="diag-text diag-text--dim">_StreamingResponse</text>
+        <text x="550" y="100" text-anchor="middle" class="diag-text diag-text--dim">reads recv_stream</text>
+        <text x="550" y="118" text-anchor="middle" class="diag-text" fill="var(--indigo-bright)">→ real send</text>
+
+        <path d="M 232 86 L 278 86" class="diag-arrow" marker-end="url(#arrB)"/>
+        <path d="M 402 86 L 448 86" class="diag-arrow" marker-end="url(#arrB)"/>
+
+        <rect x="450" y="160" width="200" height="34" rx="6" fill="var(--surface-recessed)" stroke="var(--border-bright)"/>
+        <text x="550" y="181" text-anchor="middle" class="diag-text" font-weight="600">uvicorn → client</text>
+        <path d="M 550 130 L 550 158" class="diag-arrow" marker-end="url(#arrB)"/>
+
+        <text x="340" y="240" text-anchor="middle" class="diag-text diag-text--dim">In pure ASGI (§1) this whole middle column does not exist:</text>
+        <text x="340" y="258" text-anchor="middle" class="diag-text diag-text--dim">the handler's send IS the real send, on one task.</text>
+      </svg>
+    </div>
+
+    <p>This works. It is also, for a streaming response, a machine for losing disconnects — and to see why, we read the one function that wraps <code>receive</code>.</p>
+
+    <h2 id="s4"><span class="num">§4</span><code>receive_or_disconnect</code>, decoded</h2>
+
+    <p>The downstream app's <code>receive</code> is not the real one either. It's <code>receive_or_disconnect</code>, and with Part 4 in hand it reads cleanly now. Real source:</p>
+
+<pre class="code-block"><span class="com"># starlette/middleware/base.py</span>
+<span class="kw">async def</span> <span class="fn">receive_or_disconnect</span>():
+    <span class="kw">if</span> response_sent.<span class="fn">is_set</span>():
+        <span class="kw">return</span> {<span class="str">"type"</span>: <span class="str">"http.disconnect"</span>}
+
+    <span class="kw">async with</span> anyio.<span class="fn">create_task_group</span>() <span class="kw">as</span> task_group:
+        <span class="kw">async def</span> <span class="fn">wrap</span>(func):
+            result = <span class="kw">await</span> <span class="fn">func</span>()
+            task_group.<span class="fn">cancel_scope</span>.<span class="fn">cancel</span>()   <span class="com"># first one home cancels the other</span>
+            <span class="kw">return</span> result
+
+        task_group.<span class="fn">start_soon</span>(wrap, response_sent.wait)   <span class="com"># sibling A: "response done?"</span>
+        message = <span class="kw">await</span> <span class="fn">wrap</span>(wrapped_receive)            <span class="com"># sibling B: real receive</span>
+
+    <span class="kw">return</span> message</pre>
+
+    <p>It races two waiters in a task group. Sibling A waits on <code>response_sent</code>; sibling B waits on the real receive. Whichever returns first calls <code>cancel_scope.cancel()</code> to tear the other down. The intent is reasonable: stop waiting for input the moment the response is finished.</p>
+
+    <p>But recall Part 4 §6: a task group cannot exit until its children join, and joining a live sibling forces <code>__aexit__</code> to <code>await</code>. So <code>receive_or_disconnect</code> <em>always</em> suspends at least once before returning — there is always a sibling to wind down — even when <code>wrapped_receive</code> had a message ready and returned synchronously. That forced suspension is the checkpoint that destroys the pre-armed peek from Part 4 §5.</p>
+
+    <p>Walk it through. Upstream, some code calls <code>request.is_disconnected()</code> — the pre-armed cancel scope, betting that <code>await self._receive()</code> returns without suspending. But <code>self._receive()</code> is this <code>receive_or_disconnect</code>. It spawns a sibling, and its task-group join suspends. The pre-armed cancellation, deferred by <code>call_soon</code> (Part 4 §4), lands precisely on that join. <code>is_disconnected()</code> catches the cancellation and returns <code>False</code> — every time, even with <code>http.disconnect</code> sitting in the real queue. The peek is structurally blind behind this middleware.</p>
+
+    <pre class="pullquote">Wrapping <code>receive</code> in a task group turns a synchronous read into a guaranteed suspension. The cheap peek upstream never had a chance.</pre>
+
+    <h2 id="s5"><span class="num">§5</span>Where the onion leaks</h2>
+
+    <p>Now combine §3 and §4. In a streaming response behind <code>BaseHTTPMiddleware</code>, the disconnect signal has to travel a path the bridge has quietly cut in two places.</p>
+
+    <p><strong>On the send side.</strong> When the client disconnects mid-stream, the real <code>send</code> raises <code>OSError</code> (the ASGI ≥ 2.4 convention — §6). But the real <code>send</code> is now being driven by the middleware's <em>own</em> <code>_StreamingResponse</code> on the host task, not by the downstream app. The <code>OSError</code> tears down the middleware's response. The downstream app — the actual SSE handler — is in a different task, blocked on <code>send_stream.send(chunk)</code> waiting for a rendezvous that will now never come, or looping on its own queue. It learns of the disconnect only indirectly: its next <code>send_no_error</code> sees a <code>BrokenResourceError</code> and silently returns (real source, §3), or its next <code>receive_or_disconnect</code> returns <code>http.disconnect</code> because <code>response_sent</code> got set. An idle SSE handler that is doing neither — just polling its message queue on a one-second timeout — sits there indefinitely.</p>
+
+    <p><strong>On the receive side.</strong> The handler's defensive move would be to poll <code>is_disconnected()</code>. §4 just showed that's structurally blind behind this middleware. So the one mechanism that could have rescued an idle handler is disabled by the same construction that buffers the response.</p>
+
+    <p>That is the field report's leak, stated from the middleware's side rather than the handler's. The handler doesn't notice the client is gone, because every channel by which it could have noticed runs through a bridge that either swallows the signal or defers it past the point the handler is watching.</p>
+
+    <div class="callout callout--trap">
+      <span class="callout__label">The leak, in one line</span>
+      <p><code>BaseHTTPMiddleware</code> + a streaming response = the app's <code>send</code> and <code>receive</code> are both proxies that absorb the disconnect. The app keeps running because, from where it sits, nothing happened.</p>
+    </div>
+
+    <h2 id="s6"><span class="num">§6</span>The <code>spec_version</code> escape hatch</h2>
+
+    <p>How does a disconnect become an <code>OSError</code> on <code>send</code> in the first place? It's a versioned contract between the server and Starlette. <code>StreamingResponse.__call__</code> branches on it — real source:</p>
+
+<pre class="code-block"><span class="com"># starlette/responses.py — StreamingResponse.__call__</span>
+spec_version = tuple(map(int, scope.<span class="fn">get</span>(<span class="str">"asgi"</span>, {}).<span class="fn">get</span>(<span class="str">"spec_version"</span>, <span class="str">"2.0"</span>).<span class="fn">split</span>(<span class="str">"."</span>)))
+
+<span class="kw">if</span> spec_version &gt;= (<span class="num">2</span>, <span class="num">4</span>):
+    <span class="kw">try</span>:
+        <span class="kw">await</span> self.<span class="fn">stream_response</span>(send)
+    <span class="kw">except</span> <span class="ty">OSError</span>:
+        <span class="kw">raise</span> <span class="ty">ClientDisconnect</span>()
+<span class="kw">else</span>:
+    <span class="kw">async with</span> anyio.<span class="fn">create_task_group</span>() <span class="kw">as</span> task_group:
+        <span class="kw">async def</span> <span class="fn">wrap</span>(func):
+            <span class="kw">await</span> <span class="fn">func</span>()
+            task_group.<span class="fn">cancel_scope</span>.<span class="fn">cancel</span>()
+        task_group.<span class="fn">start_soon</span>(wrap, partial(self.listen_for_disconnect, receive))
+        <span class="kw">await</span> <span class="fn">wrap</span>(partial(self.stream_response, send))</pre>
+
+    <p>ASGI 2.4 (March 2022) added the rule that the server raises <code>OSError</code> from <code>send()</code> when the transport is gone. If the server advertises <code>spec_version</code> ≥ 2.4, Starlette trusts that and just streams, catching <code>OSError</code> as a disconnect. If not, it falls back to the old way: spawn a <code>listen_for_disconnect</code> task that reads <code>receive</code> in parallel — the same task-group-race shape as <code>receive_or_disconnect</code>.</p>
+
+    <p>This branch is why the field report's handler-level watcher is safe in that stack: uvicorn 0.30.6 advertises 2.4, so the response takes the top path and never spawns a competing reader on <code>receive</code> — leaving the watcher as the sole consumer. On an older server, the bottom branch wakes up and the two would race. The safety is a property of the version number, not the code. The same fact, read from here, also tells you that fixing the middleware doesn't remove the need for <em>someone</em> to consume <code>receive</code>: the response detects disconnect through <code>send</code>, not <code>receive</code>, so an idle generator still needs its own answer.</p>
+
+    <h2 id="s7"><span class="num">§7</span>Pure ASGI, and when to pay</h2>
+
+    <p>The cure Starlette's maintainers endorse for anything streaming or disconnect-sensitive is to drop <code>BaseHTTPMiddleware</code> and write the layer as the §1 pure-ASGI form: wrap <code>send</code>/<code>receive</code>, pass them down on the same task, no buffer, no second task. The disconnect <code>OSError</code> then propagates straight up through your <code>self.app</code> the way §1 promised. You lose the ergonomic <code>Request</code>/<code>Response</code> object API; you gain transparency and, per the maintainers' benchmarks, a meaningful throughput win.</p>
+
+    <div class="table-wrap"><div class="table-scroll">
+    <table class="data">
+      <thead>
+        <tr><th></th><th>BaseHTTPMiddleware</th><th>Pure ASGI</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>API</td><td>Request → Response objects</td><td>raw (scope, receive, send)</td></tr>
+        <tr><td>downstream app runs</td><td>in a child task</td><td>on the same task</td></tr>
+        <tr><td>response bytes</td><td>through a rendezvous stream</td><td>straight to the wire</td></tr>
+        <tr><td>disconnect OSError</td><td>caught by the bridge's response</td><td>propagates up to the app</td></tr>
+        <tr><td><code>is_disconnected()</code> upstream</td><td>structurally returns False</td><td>works</td></tr>
+        <tr><td>cost</td><td>convenience now, leaks under streaming</td><td>more code per layer</td></tr>
+      </tbody>
+    </table>
+    </div></div>
+
+    <p>The rule of thumb: <code>BaseHTTPMiddleware</code> is fine for layers that read <code>scope</code> and maybe rewrite a header on a buffered response. The moment a layer sits in front of a streaming or long-lived endpoint — SSE, chunked downloads, websockets-adjacent HTTP — it should be pure ASGI, because the bridge's task-and-buffer construction is exactly wrong for a response that never ends. The field report applies exactly this rule to a five-layer stack — converting the layers in front of a streaming endpoint, leaving the buffered-only ones — and watches the leak it causes when you don't.</p>
+
+    <h2 id="s8"><span class="num">§8</span>Take with you</h2>
+
+    <ul class="takeaways">
+      <li><strong>Middleware and responses are both ASGI apps.</strong> Same <code>(scope, receive, send)</code> shape, all the way down. A middleware wraps one of the three; a response emits messages.</li>
+      <li><strong>Pure-ASGI layers pass through on one task.</strong> The disconnect <code>OSError</code> on <code>send</code> propagates straight up to the app.</li>
+      <li><strong><code>BaseHTTPMiddleware</code> trades that for an object API.</strong> It runs the app in a child task and bridges responses through a zero-buffer memory stream — a second response re-emits to the real wire.</li>
+      <li><strong>That bridge wraps <code>receive</code> in a task group</strong>, which (Part 4 §6) forces a suspension on every read — killing the upstream pre-armed peek and structurally blinding <code>is_disconnected()</code>.</li>
+      <li><strong>Disconnect arrives via <code>send</code> (OSError, ASGI 2.4), not <code>receive</code>.</strong> The bridge catches it on its own response, so the app never feels it — the streaming leak in one sentence. Pure ASGI for anything streaming.</li>
+    </ul>
+
+    <div class="bridge">
+      <div class="bridge__label">Field report · applied</div>
+      <div class="bridge__title"><a href="./sse-disconnect-detection.html">The Peek That Always Returns False</a></div>
+      <p>Parts 1–5 built the stack from the GIL up to the middleware onion. The field report is what it looks like when the whole stack conspires into one production bug: an SSE task count climbing 500 → 2,200 with no error in the log, traced through the exact <code>receive_or_disconnect</code> and <code>spec_version</code> mechanics this post laid out — and the three fixes, ranked by blast radius.</p>
+    </div>
+
+  </section>
+</article>
+
+<script>
+  (function () {
+    const root = document.documentElement;
+    const key = 'theme-pcd';
+    const saved = localStorage.getItem(key);
+    if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
+    const btn = document.querySelector('[data-theme-toggle]');
+    btn && btn.addEventListener('click', () => {
+      const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      localStorage.setItem(key, next);
+    });
+  })();
+
+  (function () {
+    const bar = document.getElementById('progress');
+    const compute = () => {
+      const h = document.documentElement;
+      const max = h.scrollHeight - h.clientHeight;
+      const pct = max <= 0 ? 0 : (h.scrollTop || document.body.scrollTop) / max;
+      bar.style.width = (pct * 100).toFixed(2) + '%';
+    };
+    let ticking = false;
+    document.addEventListener('scroll', () => {
+      if (!ticking) { requestAnimationFrame(() => { compute(); ticking = false; }); ticking = true; }
+    }, { passive: true });
+    compute();
+  })();
+</script>
+
+</body>
+</html>

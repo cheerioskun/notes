@@ -843,17 +843,17 @@
     </ul>
 
     <div class="bridge">
-      <div class="bridge__label">End of series · further reading</div>
-      <div class="bridge__title">Where the rabbit hole goes</div>
-      <p>Three posts of mechanism, and the stack is finally small enough to hold in one head. The destinations from here, in rough order of value:</p>
+      <div class="bridge__label">Up next · Part 4 of 5</div>
+      <div class="bridge__title"><a href="./anyio-cancellation.html">Two Ways to Cancel</a></div>
+      <p>Three posts in, the stack holds in one head — but two layers underneath were hand-waved the whole way: the protocols <code>await</code> is made of, and the second cancellation model (anyio) that Starlette, FastAPI, and HTTPX all run on. Part 4 builds both from source; Part 5 spends them on Starlette's middleware. The complexity was never in the pieces — it's at the joins, which is exactly where the next two parts look.</p>
+      <p>Further reading beyond the series, in rough order of value:</p>
       <ul>
-        <li>Starlette's source — <code>starlette/middleware/base.py</code> and <code>starlette/routing.py</code>. A few hundred lines each. Trace a request through and the ASGI contract becomes concrete.</li>
+        <li>Starlette's source — <code>starlette/middleware/base.py</code> and <code>starlette/routing.py</code>. A few hundred lines each. Trace a request through and the ASGI contract becomes concrete. (Part 5 does exactly this.)</li>
         <li>asyncpg's <code>pool.py</code>. The waiters queue is fifty lines including comments.</li>
         <li>The ASGI specification at <a href="https://asgi.readthedocs.io">asgi.readthedocs.io</a>. Thirty minutes, no jargon.</li>
         <li>Nathaniel J. Smith's <em>Notes on Structured Concurrency</em> (2018) — the philosophical underpinning of <code>TaskGroup</code>, and worth the read regardless of language.</li>
         <li>PEP 703 and the free-threaded Python rollout. When the GIL goes, the calculus for sync handlers changes: there is no longer a reason to prefer async-everything if CPU work can finally parallelise.</li>
       </ul>
-      <p>None of this stack is exotic in isolation. Each piece fits in a head. The complexity emerges at the joins — which is, in the end, the only place worth looking when something is wrong.</p>
     </div>
 
   </section>
