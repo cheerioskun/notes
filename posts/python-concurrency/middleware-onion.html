@@ -373,7 +373,7 @@
 <article class="page prose">
 
   <header class="hero">
-    <div class="hero__series">Part 5 of 5</div>
+    <div class="hero__series">Standalone · sibling to Parts 1–7</div>
     <h1 class="hero__title">Middleware is an Onion</h1>
     <p class="hero__subtitle">A Starlette middleware is an ASGI app wrapping an ASGI app. A response is an ASGI app too. <code>BaseHTTPMiddleware</code> bridges them with a task group and a memory stream — convenient, and the exact place a streaming disconnect goes to die.</p>
     <div class="hero__meta">
@@ -649,7 +649,7 @@ spec_version = tuple(map(int, scope.<span class="fn">get</span>(<span class="str
     <div class="bridge">
       <div class="bridge__label">Field report · applied</div>
       <div class="bridge__title"><a href="./sse-disconnect-detection.html">The Peek That Always Returns False</a></div>
-      <p>Parts 1–5 built the stack from the GIL up to the middleware onion. The field report is what it looks like when the whole stack conspires into one production bug: an SSE task count climbing 500 → 2,200 with no error in the log, traced through the exact <code>receive_or_disconnect</code> and <code>spec_version</code> mechanics this post laid out — and the three fixes, ranked by blast radius.</p>
+      <p>Parts 1–7 built the stack from the GIL up to the middleware onion. The field report is what it looks like when the whole stack conspires into one production bug: an SSE task count climbing 500 → 2,200 with no error in the log, traced through the exact <code>receive_or_disconnect</code> and <code>spec_version</code> mechanics this post laid out — and the three fixes, ranked by blast radius.</p>
     </div>
 
   </section>

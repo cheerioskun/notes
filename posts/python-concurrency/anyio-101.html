@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scopes and Checkpoints — anyio 101</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'EB Garamond', Georgia, serif;
+    --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+  }
+
+  html[data-theme="light"] {
+    --bg: #f3f6fb;
+    --bg-tint: #e8eef7;
+    --surface: #ffffff;
+    --surface-elevated: #fcfdff;
+    --surface-recessed: #e9eef6;
+    --border: rgba(20, 40, 74, 0.12);
+    --border-bright: rgba(20, 40, 74, 0.26);
+    --text: #16233b;
+    --text-bright: #0a1426;
+    --text-dim: #45566f;
+    --text-muted: #76849c;
+
+    --accent: #1f5fa8;
+    --accent-dim: rgba(31, 95, 168, 0.10);
+    --accent-bright: #2a72c4;
+    --cyan: #2b7da0;
+    --cyan-dim: rgba(43, 125, 160, 0.12);
+    --cyan-bright: #3795bd;
+    --amber: #ab7212;
+    --amber-dim: rgba(171, 114, 18, 0.12);
+    --moss: #3f6b4f;
+    --moss-dim: rgba(63, 107, 79, 0.12);
+    --rust: #9a3b22;
+  }
+
+  html[data-theme="dark"] {
+    --bg: #0d1622;
+    --bg-tint: #131f30;
+    --surface: #131f30;
+    --surface-elevated: #1a2942;
+    --surface-recessed: #0a111c;
+    --border: rgba(200, 220, 245, 0.11);
+    --border-bright: rgba(200, 220, 245, 0.24);
+    --text: #d4e0f0;
+    --text-bright: #eef4fc;
+    --text-dim: #93a4be;
+    --text-muted: #66758f;
+
+    --accent: #6aaee8;
+    --accent-dim: rgba(106, 174, 232, 0.14);
+    --accent-bright: #8cc4f4;
+    --cyan: #5fb3d9;
+    --cyan-dim: rgba(95, 179, 217, 0.14);
+    --cyan-bright: #7fc9ea;
+    --amber: #d6a648;
+    --amber-dim: rgba(214, 166, 72, 0.14);
+    --moss: #7faa8c;
+    --moss-dim: rgba(127, 170, 140, 0.14);
+    --rust: #cc7050;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 32px 32px;
+    background-position: -1px -1px;
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 20px;
+    line-height: 1.66;
+    -webkit-font-smoothing: antialiased;
+    overflow-wrap: break-word;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+  body * { min-width: 0; }
+
+  .progress {
+    position: fixed; top: 0; left: 0; width: 0%; height: 2px;
+    background: linear-gradient(90deg, var(--cyan), var(--accent));
+    z-index: 100; transition: width 0.08s linear;
+  }
+
+  .site-header {
+    border-bottom: 1px solid var(--border-bright);
+    background: var(--bg);
+    padding: 18px 32px;
+    display: flex; justify-content: space-between; align-items: center;
+    max-width: 1100px; margin: 0 auto;
+  }
+  .site-header__title {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 2.5px; text-transform: uppercase; color: var(--text-muted);
+  }
+  .theme-toggle {
+    background: none; border: 1px solid var(--border-bright);
+    color: var(--text-dim); padding: 6px 14px; border-radius: 4px;
+    cursor: pointer; font-family: var(--font-mono);
+    font-size: 11px; letter-spacing: 1px; transition: all 0.2s;
+  }
+  .theme-toggle:hover { border-color: var(--cyan); color: var(--cyan-bright); }
+
+  .page { max-width: 720px; margin: 0 auto; padding: 60px 32px 120px; background: var(--bg); }
+
+  .toc {
+    background: var(--surface-recessed); border: 1px solid var(--border-bright);
+    border-radius: 8px; padding: 22px 28px; margin-bottom: 56px;
+  }
+  .toc__label {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--text-muted);
+    margin-bottom: 14px;
+  }
+  .toc ol {
+    list-style: none; counter-reset: toc;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px;
+  }
+  @media (max-width: 560px) { .toc ol { grid-template-columns: 1fr; } }
+  .toc li { counter-increment: toc; line-height: 1.4; }
+  .toc a {
+    color: var(--text-dim); text-decoration: none; font-size: 16px;
+    display: flex; gap: 12px; align-items: baseline; padding: 4px 0;
+    transition: color 0.15s;
+  }
+  .toc a:hover { color: var(--accent); }
+  .toc a::before {
+    content: counter(toc, decimal-leading-zero);
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--cyan); font-weight: 600; min-width: 24px;
+  }
+
+  .hero { margin-bottom: 40px; padding-bottom: 36px; border-bottom: 1px solid var(--border-bright); }
+  .hero__series {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--cyan);
+    margin-bottom: 20px;
+  }
+  .hero__series::before {
+    content: ''; display: inline-block; width: 24px; height: 1px;
+    background: var(--cyan); vertical-align: middle; margin-right: 12px;
+    transform: translateY(-2px);
+  }
+  .hero__title {
+    font-family: var(--font-body); font-weight: 600;
+    font-size: clamp(38px, 6vw, 58px); line-height: 1.02;
+    letter-spacing: -0.5px; color: var(--text-bright);
+    margin-bottom: 18px; text-wrap: balance;
+  }
+  .hero__subtitle {
+    font-style: italic; font-size: 23px; line-height: 1.4;
+    color: var(--text-dim); max-width: 600px; margin-bottom: 28px;
+  }
+  .hero__meta {
+    font-family: var(--font-mono); font-size: 12px; color: var(--text-muted);
+    display: flex; gap: 20px; flex-wrap: wrap;
+  }
+  .hero__meta span { display: inline-flex; align-items: center; gap: 6px; }
+  .hero__meta span::before {
+    content: ''; width: 4px; height: 4px;
+    background: var(--text-muted); border-radius: 50%;
+  }
+  .hero__meta span:first-child::before { display: none; }
+
+  .prose p { margin-bottom: 1.3em; text-wrap: pretty; }
+  .prose strong { color: var(--text-bright); font-weight: 600; }
+  .prose em { font-style: italic; color: var(--text-bright); }
+  .prose a {
+    color: var(--accent); text-decoration: underline;
+    text-decoration-thickness: 1px; text-underline-offset: 3px;
+  }
+  html[data-theme="dark"] .prose a { color: var(--accent-bright); }
+  .prose code {
+    font-family: var(--font-mono); font-size: 0.78em;
+    background: var(--cyan-dim); color: var(--accent);
+    padding: 1px 6px; border-radius: 3px; font-weight: 500;
+  }
+  html[data-theme="dark"] .prose code { color: var(--cyan-bright); }
+
+  .lead { font-size: 23px; line-height: 1.5; color: var(--text-bright); margin-bottom: 36px; }
+
+  h2 {
+    font-family: var(--font-body); font-weight: 600; font-size: 34px;
+    line-height: 1.12; letter-spacing: -0.3px; color: var(--text-bright);
+    margin-top: 64px; margin-bottom: 8px; text-wrap: balance;
+    scroll-margin-top: 24px;
+  }
+  h2 .num {
+    font-family: var(--font-mono); font-size: 13px; font-weight: 600;
+    color: var(--cyan); letter-spacing: 1px; display: block; margin-bottom: 6px;
+  }
+  h3 {
+    font-family: var(--font-body); font-weight: 600; font-size: 24px;
+    line-height: 1.3; color: var(--text-bright);
+    margin-top: 36px; margin-bottom: 12px;
+  }
+
+  .code-block {
+    font-family: var(--font-mono); font-size: 12.5px; line-height: 1.65;
+    background: var(--surface-recessed); color: var(--text);
+    border: 1px solid var(--border-bright); border-radius: 6px;
+    padding: 16px 20px; margin: 24px 0;
+    overflow-x: auto; white-space: pre;
+  }
+  .code-block .kw  { color: var(--rust); font-weight: 500; }
+  .code-block .com { color: var(--text-muted); font-style: italic; }
+  .code-block .str { color: var(--moss); }
+  .code-block .num { color: var(--amber); }
+  .code-block .fn  { color: var(--cyan-bright); }
+  .code-block .ty  { color: var(--accent); font-weight: 500; }
+  html[data-theme="dark"] .code-block .ty { color: var(--accent-bright); }
+  .code-block .hl  { background: var(--amber-dim); padding: 0 4px; border-radius: 2px; }
+
+  .code-caption {
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+    margin-top: -16px; margin-bottom: 28px; padding-left: 4px; letter-spacing: 0.3px;
+  }
+
+  .pullquote {
+    margin: 48px 0; padding: 0 0 0 28px;
+    border-left: 3px solid var(--cyan);
+    font-style: italic; font-size: 26px; line-height: 1.38;
+    color: var(--text-bright);
+  }
+
+  .callout {
+    margin: 32px 0; padding: 18px 22px;
+    background: var(--cyan-dim); border-left: 3px solid var(--cyan);
+    border-radius: 0 8px 8px 0;
+    font-size: 18px; line-height: 1.55;
+  }
+  .callout--warn { background: var(--amber-dim); border-left-color: var(--amber); }
+  .callout--trap { background: var(--accent-dim); border-left-color: var(--accent); }
+  .callout__label {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    letter-spacing: 1.8px; text-transform: uppercase;
+    color: var(--cyan); margin-bottom: 6px; display: block;
+  }
+  .callout--warn .callout__label { color: var(--amber); }
+  .callout--trap .callout__label { color: var(--accent); }
+  html[data-theme="dark"] .callout--trap .callout__label { color: var(--accent-bright); }
+  .callout p { margin-bottom: 0; }
+  .callout p + p { margin-top: 10px; }
+  .callout code {
+    font-family: var(--font-mono); font-size: 0.78em;
+    background: rgba(0,0,0,0.05); color: inherit;
+    padding: 1px 5px; border-radius: 3px;
+  }
+  html[data-theme="dark"] .callout code { background: rgba(255,255,255,0.07); }
+
+  .exercise {
+    margin: 28px 0; padding: 20px 24px;
+    background: var(--moss-dim); border-left: 3px solid var(--moss);
+    border-radius: 0 8px 8px 0;
+  }
+  .exercise__label {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    letter-spacing: 1.8px; text-transform: uppercase;
+    color: var(--moss); margin-bottom: 8px; display: block;
+  }
+  .exercise p { margin-bottom: 0.6em; }
+  .exercise p:last-child { margin-bottom: 0; }
+
+  .takeaways {
+    margin: 32px 0; padding: 24px 28px;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-bright); border-radius: 10px;
+    list-style: none;
+  }
+  .takeaways li {
+    font-size: 19px; padding: 10px 0 10px 22px;
+    border-bottom: 1px dashed var(--border);
+    position: relative;
+  }
+  .takeaways li:last-child { border-bottom: none; }
+  .takeaways li::before {
+    content: '·'; color: var(--cyan); font-weight: 600;
+    font-family: var(--font-mono);
+    position: absolute; left: 4px; top: 10px;
+  }
+
+  .bridge {
+    margin-top: 80px; padding: 36px 32px;
+    background: var(--surface-elevated); border: 1px solid var(--border-bright);
+    border-radius: 12px; border-left: 4px solid var(--cyan);
+  }
+  .bridge__label {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--cyan); margin-bottom: 12px;
+  }
+  .bridge__title {
+    font-weight: 600; font-size: 26px;
+    color: var(--text-bright); margin-bottom: 10px;
+  }
+  .bridge p { color: var(--text-dim); margin-bottom: 0; font-size: 18px; }
+  .bridge a { color: var(--accent); }
+  html[data-theme="dark"] .bridge a { color: var(--accent-bright); }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .hero, .toc, .section { animation: fadeUp 0.5s ease-out both; }
+  .toc { animation-delay: 0.05s; }
+  .section { animation-delay: 0.10s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .page { padding: 36px 20px 80px; }
+    .site-header { padding: 14px 20px; }
+    body { font-size: 18px; }
+    .lead { font-size: 20px; }
+    h2 { font-size: 27px; margin-top: 48px; }
+    h3 { font-size: 20px; }
+    .pullquote { font-size: 21px; padding-left: 18px; }
+    .code-block { font-size: 11.5px; padding: 14px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+
+<header class="site-header">
+  <span class="site-header__title">Python Concurrency Decoded</span>
+  <button class="theme-toggle" data-theme-toggle aria-label="Toggle theme">◐ Theme</button>
+</header>
+
+<article class="page prose">
+
+  <header class="hero">
+    <div class="hero__series">Part 5 of 7 · anyio 101</div>
+    <h1 class="hero__title">Scopes and Checkpoints</h1>
+    <p class="hero__subtitle">anyio is the discipline layer over asyncio. It re-introduces three ideas trio invented: cancellation as a property of a block, checkpoints as the only places it lands, and the rule that no task outlives the block that spawned it. All built from the protocol of Part 4.</p>
+    <div class="hero__meta">
+      <span>~15 min read</span>
+      <span>Python 3.11+ · anyio 4.x</span>
+      <span>Assumes: Part 4 (asyncio 101)</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <div class="toc__label">In this post</div>
+    <ol>
+      <li><a href="#s1">Two models, side by side</a></li>
+      <li><a href="#s2"><code>CancelScope</code>: a cancellable lexical region</a></li>
+      <li><a href="#s3">What a checkpoint actually checks</a></li>
+      <li><a href="#s4">How cancellation actually lands</a></li>
+      <li><a href="#s5">Task groups: structured concurrency</a></li>
+      <li><a href="#s6">Free to enter, expensive to exit</a></li>
+      <li><a href="#s7">Memory streams have a back wall</a></li>
+      <li><a href="#s8">Take with you</a></li>
+    </ol>
+  </nav>
+
+  <section class="section">
+
+    <p class="lead">Part 4 took you from <code>yield</code> to <code>Task</code>. The protocol that came out of it — a coroutine yielding a Future, a Task pumping it with <code>send</code>, cancellation as a <code>throw</code> into the paused yield — is the floor everything in this post sits on. anyio doesn't replace any of it. It bolts a second discipline on top: <em>lexical</em> cancellation, <em>structured</em> spawning, and an <em>explicit</em> word for the place those two meet.</p>
+
+    <p>Three primitives, all of them ordinary Python objects you can pass around, store, and compose. <code>CancelScope</code>. <code>TaskGroup</code>. <code>MemoryObjectStream</code>. The whole library has more, but these are the load-bearing ones — the ones the next post weaponizes.</p>
+
+    <div class="callout">
+      <span class="callout__label">From Go</span>
+      <p>Goroutines are cancelled by closing a channel and hoping every goroutine checks it. anyio makes the discipline mandatory: you can only spawn inside a task group, you can only cancel a scope, and the scope's cancellation is delivered to every task lexically inside it. <code>context.Context</code> done right — at the language layer rather than as a library convention.</p>
+    </div>
+
+    <h2 id="s1"><span class="num">§1</span>Two models, side by side</h2>
+
+    <p>asyncio's cancellation is per-task: <code>task.cancel()</code> arranges for <code>CancelledError</code> to be thrown into <code>task</code>'s coroutine at its next resume. You hold a Task object; you cancel a Task object. The unit of cancellation is the running thing.</p>
+
+    <p>anyio's cancellation is per-scope: <code>scope.cancel()</code> trips the scope, and every task that is currently executing inside that lexical region gets unwound at its next <em>checkpoint</em>. You hold a CancelScope; you cancel a <em>region</em>. The unit of cancellation is the bracket in source.</p>
+
+    <p>Same machinery — <code>coro.throw(CancelledError())</code> under the hood. Different shape of the API. The shape matters because it scales differently. Cancelling a single task is the easy case. Cancelling "everything below this point in the call tree" is the case real programs need, and asyncio makes you write it by hand.</p>
+
+    <div class="callout callout--trap">
+      <span class="callout__label">Sharpen the contrast</span>
+      <p>In asyncio: <em>"cancel that Task object I'm holding."</em> Local; you must already know who you're cancelling.</p>
+      <p>In anyio: <em>"cancel the work that's happening inside this <code>with</code> block, whoever's doing it."</em> Lexical; you cancel by location, and the scope finds the tasks.</p>
+    </div>
+
+    <h2 id="s2"><span class="num">§2</span><code>CancelScope</code>: a cancellable lexical region</h2>
+
+    <p>A <code>CancelScope</code> is a context manager. The block under it is the region. You can cancel the scope at any time — before entering it, inside it, from outside. Timeouts are a scope with a deadline.</p>
+
+<pre class="code-block"><span class="kw">import</span> anyio
+
+<span class="kw">async def</span> <span class="fn">demo</span>():
+    <span class="kw">with</span> anyio.<span class="fn">CancelScope</span>() <span class="kw">as</span> scope:
+        <span class="kw">await</span> anyio.<span class="fn">sleep</span>(<span class="num">0.1</span>)
+        scope.<span class="fn">cancel</span>()                  <span class="com"># trip it from inside</span>
+        <span class="kw">await</span> anyio.<span class="fn">sleep</span>(<span class="num">10</span>)              <span class="com"># this raises CancelledError</span>
+        <span class="fn">print</span>(<span class="str">"never reached"</span>)
+
+    <span class="fn">print</span>(<span class="str">"after the scope"</span>)         <span class="com"># reached — the scope swallows its OWN cancellation</span>
+
+<span class="kw">with</span> anyio.<span class="fn">move_on_after</span>(<span class="num">5</span>):           <span class="com"># scope with a deadline</span>
+    <span class="kw">await</span> something_slow()
+                                       <span class="com"># after 5s the scope cancels itself, control resumes here</span></pre>
+
+    <p>Three properties worth memorising. First, a scope <strong>swallows the <code>CancelledError</code> that it itself raised</strong> — so control resumes <em>after</em> the <code>with</code> block, not by propagating the exception upward. This is what makes timeouts feel ergonomic: you don't write a <code>try/except</code> at every call site. Second, a scope <strong>does not swallow cancellations from outer scopes</strong> — those re-raise so the outer scope can do its own cleanup. Third, you can <strong>cancel a scope before anyone enters it</strong>, and the first checkpoint inside will fire immediately. That last property is what the cancellation post will weaponize next.</p>
+
+    <h2 id="s3"><span class="num">§3</span>What a checkpoint actually checks</h2>
+
+    <p>"Cancellation lands at the next checkpoint." Fine — but what is a checkpoint, mechanically? anyio's own definition, real source:</p>
+
+<pre class="code-block"><span class="com"># anyio/lowlevel.py</span>
+<span class="kw">async def</span> <span class="fn">checkpoint</span>() -&gt; <span class="kw">None</span>:
+    <span class="str">"""Check for cancellation and allow the scheduler to switch to another task."""</span>
+    <span class="kw">await</span> <span class="fn">get_async_backend</span>().<span class="fn">checkpoint</span>()</pre>
+
+    <p>A checkpoint is exactly two things welded together: a <strong>chance for the scheduler to run someone else</strong>, and a <strong>look at every CancelScope this task is lexically inside</strong> to see if any of them is now cancelled. Every <code>await</code> on something that actually parks (Part 4, §6 — a Future the loop hasn't resolved) is a checkpoint. Awaiting a coroutine that runs straight through without parking is <em>not</em>. That distinction was the whole trap in §3 of the old draft, and it is load-bearing for the next post.</p>
+
+    <pre class="pullquote">A checkpoint is the moment the task suspends and the moment cancellation checks fire — bolted together so you can't have one without the other.</pre>
+
+    <p>Common Python operations that hit a checkpoint: <code>await anyio.sleep(...)</code>, awaiting a stream read, awaiting a lock acquisition, awaiting a queue get when the queue is empty. Operations that don't necessarily suspend: <code>tg.start_soon</code>, entering a task group, dictionary lookups, arithmetic. If you want a guaranteed scheduler-yielding moment, call <code>await anyio.lowlevel.checkpoint()</code> explicitly.</p>
+
+    <h2 id="s4"><span class="num">§4</span>How cancellation actually lands</h2>
+
+    <p>The mechanism is sneakier than "throw at next yield". When you call <code>scope.cancel()</code>, anyio does <em>not</em> throw anything right now. It schedules a callback that will throw later. Real source, trimmed to the load-bearing lines:</p>
+
+<pre class="code-block"><span class="com"># anyio/_backends/_asyncio.py — CancelScope._deliver_cancellation</span>
+<span class="kw">def</span> <span class="fn">_deliver_cancellation</span>(self, origin):
+    current = <span class="fn">current_task</span>()
+    <span class="kw">for</span> task <span class="kw">in</span> self._tasks:
+        <span class="hl"><span class="kw">if</span> task <span class="kw">is not</span> current <span class="kw">and</span> ...</span>:   <span class="com"># never cancels the running task inline</span>
+            waiter = task._fut_waiter
+            <span class="kw">if not</span> isinstance(waiter, asyncio.<span class="ty">Future</span>) <span class="kw">or not</span> waiter.<span class="fn">done</span>():
+                task.<span class="fn">cancel</span>(origin._cancel_reason)
+    ...
+    <span class="kw">if</span> origin <span class="kw">is</span> self <span class="kw">and</span> should_retry:
+        <span class="hl">self._cancel_handle = <span class="fn">get_running_loop</span>().<span class="fn">call_soon</span>(</span>
+            self._deliver_cancellation, origin)         <span class="com"># try again next loop tick</span></pre>
+    <p class="code-caption">Two highlighted lines: skip the currently-running task; if work remains, reschedule yourself.</p>
+
+    <p>Read it slowly. <code>_deliver_cancellation</code> walks every task registered with this scope. For each one that is <em>not the currently running task</em>, it calls <code>task.cancel()</code> — which under the hood schedules a <code>CancelledError</code> to be thrown into that task at its next resume. The currently-running task is skipped on purpose: cancelling it inline would mean raising <code>CancelledError</code> right here inside <code>cancel()</code>, which the caller would have to be ready for. Instead, anyio reschedules <code>_deliver_cancellation</code> via <code>loop.call_soon</code> — to run again on the next loop tick.</p>
+
+    <p>So calling <code>scope.cancel()</code> <em>does not raise</em>. It arms a callback. The cancellation actually lands at the next moment the task suspends — when <code>_fut_waiter</code> is set to a Future the task is parked on. Then the next loop tick fires, <code>_deliver_cancellation</code> runs again, finds the task parked, calls <code>task.cancel()</code> on it, the asyncio machinery <code>throw</code>s <code>CancelledError</code> at the paused <code>yield self</code>, and the exception starts unwinding.</p>
+
+    <div class="callout">
+      <span class="callout__label">Mental model</span>
+      <p>Cancellation in anyio isn't thrown at you. It's <em>scheduled</em> — and it lands the next time you blink. "The next time you blink" = the next suspension. If your code runs straight through a scope without awaiting anything that parks, the <code>call_soon</code>'d callback never gets its turn before the scope exits, and the cancellation is simply dropped. That asymmetry is not a bug. It is the feature the next post weaponizes.</p>
+    </div>
+
+    <h2 id="s5"><span class="num">§5</span>Task groups: structured concurrency</h2>
+
+    <p>asyncio lets you fire-and-forget: <code>asyncio.create_task(coro())</code> spawns a task, returns immediately, and the task lives until the loop ends or someone cancels it. If you forget to await it, exceptions get swallowed; if you forget to cancel it, it leaks. Half the bugs in the SSE field report are forgotten tasks.</p>
+
+    <p>anyio inherits trio's answer: <code>TaskGroup</code>. You can only spawn tasks inside one, and the group is a context manager that <strong>cannot exit until every task it spawned has finished</strong>. The block is a hard wall around the children.</p>
+
+<pre class="code-block"><span class="kw">async def</span> <span class="fn">worker</span>(n):
+    <span class="kw">await</span> anyio.<span class="fn">sleep</span>(n)
+    <span class="fn">print</span>(<span class="str">f"worker {</span>n<span class="str">} done"</span>)
+
+<span class="kw">async def</span> <span class="fn">main</span>():
+    <span class="kw">async with</span> anyio.<span class="fn">create_task_group</span>() <span class="kw">as</span> tg:
+        tg.<span class="fn">start_soon</span>(worker, <span class="num">1</span>)
+        tg.<span class="fn">start_soon</span>(worker, <span class="num">2</span>)
+        <span class="fn">print</span>(<span class="str">"spawned"</span>)
+    <span class="fn">print</span>(<span class="str">"all workers finished"</span>)         <span class="com"># reached only AFTER both workers return</span></pre>
+
+    <p>Properties this gets you. If <code>worker(1)</code> raises, the group cancels every other child and re-raises the exception at the <code>async with</code> exit. No silently-swallowed errors. If the parent is cancelled (because some <em>outer</em> scope tripped), the group propagates the cancellation to every child, waits for them to unwind, and only then re-raises. No leaked tasks. The promise — <em>no task outlives the block that spawned it</em> — is the whole point of structured concurrency.</p>
+
+    <p>The promise has a cost, paid on exit. That's the next section.</p>
+
+    <h2 id="s6"><span class="num">§6</span>Free to enter, expensive to exit</h2>
+
+    <p>Entering a task group does not suspend. Read the source:</p>
+
+<pre class="code-block"><span class="com"># anyio/_backends/_asyncio.py — TaskGroup.__aenter__</span>
+<span class="kw">async def</span> <span class="fn">__aenter__</span>(self) -&gt; <span class="ty">TaskGroup</span>:
+    self.cancel_scope.<span class="fn">__enter__</span>()         <span class="com"># synchronous! no await inside</span>
+    self._active = <span class="kw">True</span>
+    <span class="kw">return</span> self</pre>
+
+    <p>The body awaits nothing. <code>cancel_scope.__enter__()</code> is an ordinary synchronous method — it appends the scope to the task's lexical-scope stack and returns. So <code>await tg.__aenter__()</code> runs start to finish without ever yielding a Future to the loop. Part 4, §5 told you this is allowed: <code>async</code> grants the right to suspend; it doesn't force one. Entering a task group is, for scheduling purposes, a function call with extra syntax — <em>not a checkpoint</em>.</p>
+
+    <p>Exiting is the opposite. The promise — no task outlives the block — means <code>__aexit__</code> cannot return until every child has finished. So <code>__aexit__</code> creates a Future and awaits it, parking the host task until the last child completes. Real source:</p>
+
+<pre class="code-block"><span class="com"># anyio/_backends/_asyncio.py — TaskGroup.__aexit__ (trimmed)</span>
+<span class="kw">if</span> self._tasks:
+    <span class="kw">with</span> <span class="ty">CancelScope</span>() <span class="kw">as</span> wait_scope:
+        <span class="kw">while</span> self._tasks:
+            self._on_completed_fut = loop.<span class="fn">create_future</span>()
+            <span class="hl"><span class="kw">await</span> self._on_completed_fut</span>     <span class="com"># suspends until a child completes</span></pre>
+
+    <p>That <code>await self._on_completed_fut</code> is a real, full suspension — a checkpoint. It is the place where any pre-armed cancellation will finally fire. The task group's cost is paid at the join, not at the spawn. <em>Free to enter, expensive to exit.</em></p>
+
+    <div class="callout callout--warn">
+      <span class="callout__label">Why this matters</span>
+      <p>Every checkpoint is a place cancellation can land. Entering a task group is not one; exiting is. If you spawn a child you can't cancel, and then try to "peek" through the group with a pre-armed cancel scope, you will pay the price at the exit checkpoint — even when the work you actually wanted to do already finished synchronously. That is the whole story of the next post.</p>
+    </div>
+
+    <h2 id="s7"><span class="num">§7</span>Memory streams have a back wall</h2>
+
+    <p>One more primitive. asyncio gives you <code>Queue(maxsize=…)</code>. anyio gives you the <strong>memory object stream</strong>: a sender half and a receiver half, with a buffer between. The shape that matters is <code>send</code>:</p>
+
+<pre class="code-block"><span class="com"># anyio/streams/memory.py — MemoryObjectSendStream (trimmed)</span>
+<span class="kw">def</span> <span class="fn">send_nowait</span>(self, item):
+    ...
+    <span class="kw">if</span> len(self._state.buffer) &lt; self._state.max_buffer_size:
+        self._state.buffer.<span class="fn">append</span>(item)       <span class="com"># room → returns immediately</span>
+    <span class="kw">else</span>:
+        <span class="kw">raise</span> <span class="ty">WouldBlock</span>                         <span class="com"># full → caller must await send()</span></pre>
+
+    <p>With <code>max_buffer_size=0</code> (the default) the buffer has no room <em>ever</em>: every <code>send</code> blocks until a receiver is waiting to take the item directly. That's a rendezvous — pure backpressure, the sender can never outrun the receiver. With a positive size, the sender may run ahead by that many items before it's forced to wait. Either way there is a <strong>back wall</strong>: the producer cannot push unboundedly.</p>
+
+    <p>This is the property a plain unbounded <code>asyncio.Queue</code> lacks, and it's the reason Starlette routes streaming-response bytes through a memory stream — to couple the producer's pace to the client's. The failure mode in the field report is what happens when that coupling sits <em>behind</em> a layer that has stopped reading: the sender parks on the back wall, the layer above can't peek through it, and the streaming response stalls. Part 6 takes that apart.</p>
+
+    <h2 id="s8"><span class="num">§8</span>Take with you</h2>
+
+    <ul class="takeaways">
+      <li><strong>asyncio cancels a Task; anyio cancels a scope.</strong> Same <code>throw</code> mechanism underneath; different unit. Lexical cancellation composes when per-task cancellation doesn't.</li>
+      <li><strong>A checkpoint is a real suspension <em>and</em> a cancellation check, welded.</strong> Awaiting something that parks is a checkpoint; awaiting a coroutine that runs straight through is not.</li>
+      <li><strong><code>scope.cancel()</code> does not raise. It arms a <code>call_soon</code> callback.</strong> The cancellation lands at the next checkpoint. No suspension, no delivery.</li>
+      <li><strong>A task group is a hard wall.</strong> No task outlives the block. The exit awaits the join — and that await is the checkpoint a pre-armed scope will fire on.</li>
+      <li><strong>A memory stream has a back wall.</strong> Buffer size is the slack between producer and consumer; default zero means rendezvous. The producer cannot outrun the consumer.</li>
+    </ul>
+
+    <div class="bridge">
+      <div class="bridge__label">Up next · Part 6 of 7</div>
+      <div class="bridge__title"><a href="./anyio-cancellation.html">Two Ways to Cancel</a></div>
+      <p>With scopes, checkpoints, and task groups in hand, the next post spends them. A pre-armed cancel scope synthesizes a <em>peek</em> out of a blocking get; a forgotten task group quietly turns that peek into a lie. The whole construction is legal anyio — and it's the load-bearing trick in Starlette's <code>BaseHTTPMiddleware</code>.</p>
+    </div>
+
+  </section>
+</article>
+
+<script>
+  (function () {
+    const root = document.documentElement;
+    const key = 'theme-pcd';
+    const saved = localStorage.getItem(key);
+    if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
+    const btn = document.querySelector('[data-theme-toggle]');
+    btn && btn.addEventListener('click', () => {
+      const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      localStorage.setItem(key, next);
+    });
+  })();
+
+  (function () {
+    const bar = document.getElementById('progress');
+    const compute = () => {
+      const h = document.documentElement;
+      const max = h.scrollHeight - h.clientHeight;
+      const pct = max <= 0 ? 0 : (h.scrollTop || document.body.scrollTop) / max;
+      bar.style.width = (pct * 100).toFixed(2) + '%';
+    };
+    let ticking = false;
+    document.addEventListener('scroll', () => {
+      if (!ticking) { requestAnimationFrame(() => { compute(); ticking = false; }); ticking = true; }
+    }, { passive: true });
+    compute();
+  })();
+</script>
+
+</body>
+</html>

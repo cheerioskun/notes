@@ -52,11 +52,19 @@
       <span class="desc">The self-pipe, signals, debug mode, <code>asyncio.run</code>, contextvars, uvloop.</span>
     </li>
     <li>
-      <span class="part">04</span> &nbsp;<a class="title" href="python-concurrency/anyio-cancellation.html">Two Ways to Cancel</a>
-      <span class="desc">anyio, checkpoints, and the protocols <code>await</code> is made of.</span>
+      <span class="part">04</span> &nbsp;<a class="title" href="python-concurrency/asyncio-101.html">The Two-Way Door</a>
+      <span class="desc">Generators, <code>send</code>, <code>throw</code>, <code>yield from</code>, and what <code>await</code> desugars to.</span>
     </li>
     <li>
-      <span class="part">05</span> &nbsp;<a class="title" href="python-concurrency/gil-part-3.html">Servers, in Earnest</a>
+      <span class="part">05</span> &nbsp;<a class="title" href="python-concurrency/anyio-101.html">Scopes and Checkpoints</a>
+      <span class="desc">anyio 101 &mdash; cancel scopes, checkpoints, task groups, memory streams.</span>
+    </li>
+    <li>
+      <span class="part">06</span> &nbsp;<a class="title" href="python-concurrency/anyio-cancellation.html">Two Ways to Cancel</a>
+      <span class="desc">The pre-armed peek and the task group that quietly turns it into a lie.</span>
+    </li>
+    <li>
+      <span class="part">07</span> &nbsp;<a class="title" href="python-concurrency/gil-part-3.html">Servers, in Earnest</a>
       <span class="desc">Putting the loop to work behind a real request-serving stack.</span>
     </li>
   </ul>
@@ -74,6 +82,14 @@
     <li>
       <a class="title" href="python-concurrency/sse-disconnect-detection.html">The Peek That Always Returns False</a>
       <span class="desc">Chasing SSE disconnect detection through five middleware layers.</span>
+    </li>
+    <li>
+      <a class="title" href="python-concurrency/pipecat-101.html">One Loop, Twenty Milliseconds</a>
+      <span class="desc">How Pipecat moves real-time audio through a dozen AI services on a single event loop &mdash; without ever blocking.</span>
+    </li>
+    <li>
+      <a class="title" href="python-concurrency/voice-module-101.html">An Hour on One Loop</a>
+      <span class="desc">Architecting a voice agent on Temporal: a single activity that holds an asyncio loop open for half an hour, with WebRTC and Redis bridged in.</span>
     </li>
   </ul>
 

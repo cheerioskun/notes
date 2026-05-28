@@ -453,8 +453,8 @@
 
   <header class="hero">
     <div class="hero__series">
-      Python Concurrency · Part 3 of 3
-      <span class="hero__progress"><span class="on">●</span><span class="on">●</span><span class="on">●</span></span>
+      Python Concurrency · Part 7 of 7
+      <span class="hero__progress"><span class="on">●</span><span class="on">●</span><span class="on">●</span><span class="on">●</span><span class="on">●</span><span class="on">●</span><span class="on">●</span></span>
     </div>
     <h1 class="hero__title">Servers, in Earnest</h1>
     <p class="hero__subtitle">Four layers sit between the loop and your handler. Each one adds opinions; each one leaks under load.</p>
@@ -843,10 +843,9 @@
     </ul>
 
     <div class="bridge">
-      <div class="bridge__label">Up next · Part 4 of 5</div>
-      <div class="bridge__title"><a href="./anyio-cancellation.html">Two Ways to Cancel</a></div>
-      <p>Three posts in, the stack holds in one head — but two layers underneath were hand-waved the whole way: the protocols <code>await</code> is made of, and the second cancellation model (anyio) that Starlette, FastAPI, and HTTPX all run on. Part 4 builds both from source; Part 5 spends them on Starlette's middleware. The complexity was never in the pieces — it's at the joins, which is exactly where the next two parts look.</p>
-      <p>Further reading beyond the series, in rough order of value:</p>
+      <div class="bridge__label">End of series · Further reading</div>
+      <div class="bridge__title">Where to go next</div>
+      <p>Seven parts in, the stack holds in one head. The next move is your own codebase. Standalones — <a href="./measuring-asyncio.html">Measuring the Loop</a>, <a href="./middleware-onion.html">Middleware is an Onion</a>, <a href="./sse-disconnect-detection.html">The Peek That Always Returns False</a> — apply the same lens to instrumentation, Starlette's request stack, and a real disconnect-detection bug. Beyond the series:</p>
       <ul>
         <li>Starlette's source — <code>starlette/middleware/base.py</code> and <code>starlette/routing.py</code>. A few hundred lines each. Trace a request through and the ASGI contract becomes concrete. (Part 5 does exactly this.)</li>
         <li>asyncpg's <code>pool.py</code>. The waiters queue is fifty lines including comments.</li>

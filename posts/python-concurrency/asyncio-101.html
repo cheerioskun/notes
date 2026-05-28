@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Two-Way Door — yield, send, and what await actually desugars to</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'EB Garamond', Georgia, serif;
+    --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+  }
+
+  html[data-theme="light"] {
+    --bg: #f3f6fb;
+    --bg-tint: #e8eef7;
+    --surface: #ffffff;
+    --surface-elevated: #fcfdff;
+    --surface-recessed: #e9eef6;
+    --border: rgba(20, 40, 74, 0.12);
+    --border-bright: rgba(20, 40, 74, 0.26);
+    --text: #16233b;
+    --text-bright: #0a1426;
+    --text-dim: #45566f;
+    --text-muted: #76849c;
+
+    --accent: #1f5fa8;
+    --accent-dim: rgba(31, 95, 168, 0.10);
+    --accent-bright: #2a72c4;
+    --cyan: #2b7da0;
+    --cyan-dim: rgba(43, 125, 160, 0.12);
+    --cyan-bright: #3795bd;
+    --amber: #ab7212;
+    --amber-dim: rgba(171, 114, 18, 0.12);
+    --moss: #3f6b4f;
+    --moss-dim: rgba(63, 107, 79, 0.12);
+    --rust: #9a3b22;
+  }
+
+  html[data-theme="dark"] {
+    --bg: #0d1622;
+    --bg-tint: #131f30;
+    --surface: #131f30;
+    --surface-elevated: #1a2942;
+    --surface-recessed: #0a111c;
+    --border: rgba(200, 220, 245, 0.11);
+    --border-bright: rgba(200, 220, 245, 0.24);
+    --text: #d4e0f0;
+    --text-bright: #eef4fc;
+    --text-dim: #93a4be;
+    --text-muted: #66758f;
+
+    --accent: #6aaee8;
+    --accent-dim: rgba(106, 174, 232, 0.14);
+    --accent-bright: #8cc4f4;
+    --cyan: #5fb3d9;
+    --cyan-dim: rgba(95, 179, 217, 0.14);
+    --cyan-bright: #7fc9ea;
+    --amber: #d6a648;
+    --amber-dim: rgba(214, 166, 72, 0.14);
+    --moss: #7faa8c;
+    --moss-dim: rgba(127, 170, 140, 0.14);
+    --rust: #cc7050;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 32px 32px;
+    background-position: -1px -1px;
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 20px;
+    line-height: 1.66;
+    -webkit-font-smoothing: antialiased;
+    overflow-wrap: break-word;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+  body * { min-width: 0; }
+
+  .progress {
+    position: fixed; top: 0; left: 0; width: 0%; height: 2px;
+    background: linear-gradient(90deg, var(--cyan), var(--accent));
+    z-index: 100; transition: width 0.08s linear;
+  }
+
+  .site-header {
+    border-bottom: 1px solid var(--border-bright);
+    background: var(--bg);
+    padding: 18px 32px;
+    display: flex; justify-content: space-between; align-items: center;
+    max-width: 1100px; margin: 0 auto;
+  }
+  .site-header__title {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 2.5px; text-transform: uppercase; color: var(--text-muted);
+  }
+  .theme-toggle {
+    background: none; border: 1px solid var(--border-bright);
+    color: var(--text-dim); padding: 6px 14px; border-radius: 4px;
+    cursor: pointer; font-family: var(--font-mono);
+    font-size: 11px; letter-spacing: 1px; transition: all 0.2s;
+  }
+  .theme-toggle:hover { border-color: var(--cyan); color: var(--cyan-bright); }
+
+  .page { max-width: 720px; margin: 0 auto; padding: 60px 32px 120px; background: var(--bg); }
+
+  .toc {
+    background: var(--surface-recessed); border: 1px solid var(--border-bright);
+    border-radius: 8px; padding: 22px 28px; margin-bottom: 56px;
+  }
+  .toc__label {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--text-muted);
+    margin-bottom: 14px;
+  }
+  .toc ol {
+    list-style: none; counter-reset: toc;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px;
+  }
+  @media (max-width: 560px) { .toc ol { grid-template-columns: 1fr; } }
+  .toc li { counter-increment: toc; line-height: 1.4; }
+  .toc a {
+    color: var(--text-dim); text-decoration: none; font-size: 16px;
+    display: flex; gap: 12px; align-items: baseline; padding: 4px 0;
+    transition: color 0.15s;
+  }
+  .toc a:hover { color: var(--accent); }
+  .toc a::before {
+    content: counter(toc, decimal-leading-zero);
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--cyan); font-weight: 600; min-width: 24px;
+  }
+
+  .hero { margin-bottom: 40px; padding-bottom: 36px; border-bottom: 1px solid var(--border-bright); }
+  .hero__series {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--cyan);
+    margin-bottom: 20px;
+  }
+  .hero__series::before {
+    content: ''; display: inline-block; width: 24px; height: 1px;
+    background: var(--cyan); vertical-align: middle; margin-right: 12px;
+    transform: translateY(-2px);
+  }
+  .hero__title {
+    font-family: var(--font-body); font-weight: 600;
+    font-size: clamp(38px, 6vw, 58px); line-height: 1.02;
+    letter-spacing: -0.5px; color: var(--text-bright);
+    margin-bottom: 18px; text-wrap: balance;
+  }
+  .hero__subtitle {
+    font-style: italic; font-size: 23px; line-height: 1.4;
+    color: var(--text-dim); max-width: 600px; margin-bottom: 28px;
+  }
+  .hero__meta {
+    font-family: var(--font-mono); font-size: 12px; color: var(--text-muted);
+    display: flex; gap: 20px; flex-wrap: wrap;
+  }
+  .hero__meta span { display: inline-flex; align-items: center; gap: 6px; }
+  .hero__meta span::before {
+    content: ''; width: 4px; height: 4px;
+    background: var(--text-muted); border-radius: 50%;
+  }
+  .hero__meta span:first-child::before { display: none; }
+
+  .prose p { margin-bottom: 1.3em; text-wrap: pretty; }
+  .prose strong { color: var(--text-bright); font-weight: 600; }
+  .prose em { font-style: italic; color: var(--text-bright); }
+  .prose a {
+    color: var(--accent); text-decoration: underline;
+    text-decoration-thickness: 1px; text-underline-offset: 3px;
+  }
+  html[data-theme="dark"] .prose a { color: var(--accent-bright); }
+  .prose code {
+    font-family: var(--font-mono); font-size: 0.78em;
+    background: var(--cyan-dim); color: var(--accent);
+    padding: 1px 6px; border-radius: 3px; font-weight: 500;
+  }
+  html[data-theme="dark"] .prose code { color: var(--cyan-bright); }
+
+  .lead { font-size: 23px; line-height: 1.5; color: var(--text-bright); margin-bottom: 36px; }
+
+  h2 {
+    font-family: var(--font-body); font-weight: 600; font-size: 34px;
+    line-height: 1.12; letter-spacing: -0.3px; color: var(--text-bright);
+    margin-top: 64px; margin-bottom: 8px; text-wrap: balance;
+    scroll-margin-top: 24px;
+  }
+  h2 .num {
+    font-family: var(--font-mono); font-size: 13px; font-weight: 600;
+    color: var(--cyan); letter-spacing: 1px; display: block; margin-bottom: 6px;
+  }
+  h3 {
+    font-family: var(--font-body); font-weight: 600; font-size: 24px;
+    line-height: 1.3; color: var(--text-bright);
+    margin-top: 36px; margin-bottom: 12px;
+  }
+
+  .code-block {
+    font-family: var(--font-mono); font-size: 12.5px; line-height: 1.65;
+    background: var(--surface-recessed); color: var(--text);
+    border: 1px solid var(--border-bright); border-radius: 6px;
+    padding: 16px 20px; margin: 24px 0;
+    overflow-x: auto; white-space: pre;
+  }
+  .code-block .kw  { color: var(--rust); font-weight: 500; }
+  .code-block .com { color: var(--text-muted); font-style: italic; }
+  .code-block .str { color: var(--moss); }
+  .code-block .num { color: var(--amber); }
+  .code-block .fn  { color: var(--cyan-bright); }
+  .code-block .ty  { color: var(--accent); font-weight: 500; }
+  html[data-theme="dark"] .code-block .ty { color: var(--accent-bright); }
+  .code-block .hl  { background: var(--amber-dim); padding: 0 4px; border-radius: 2px; }
+
+  .code-caption {
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+    margin-top: -16px; margin-bottom: 28px; padding-left: 4px; letter-spacing: 0.3px;
+  }
+
+  .pullquote {
+    margin: 48px 0; padding: 0 0 0 28px;
+    border-left: 3px solid var(--cyan);
+    font-style: italic; font-size: 26px; line-height: 1.38;
+    color: var(--text-bright);
+  }
+
+  .callout {
+    margin: 32px 0; padding: 18px 22px;
+    background: var(--cyan-dim); border-left: 3px solid var(--cyan);
+    border-radius: 0 8px 8px 0;
+    font-size: 18px; line-height: 1.55;
+  }
+  .callout--warn { background: var(--amber-dim); border-left-color: var(--amber); }
+  .callout--trap { background: var(--accent-dim); border-left-color: var(--accent); }
+  .callout__label {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    letter-spacing: 1.8px; text-transform: uppercase;
+    color: var(--cyan); margin-bottom: 6px; display: block;
+  }
+  .callout--warn .callout__label { color: var(--amber); }
+  .callout--trap .callout__label { color: var(--accent); }
+  html[data-theme="dark"] .callout--trap .callout__label { color: var(--accent-bright); }
+  .callout p { margin-bottom: 0; }
+  .callout p + p { margin-top: 10px; }
+  .callout code {
+    font-family: var(--font-mono); font-size: 0.78em;
+    background: rgba(0,0,0,0.05); color: inherit;
+    padding: 1px 5px; border-radius: 3px;
+  }
+  html[data-theme="dark"] .callout code { background: rgba(255,255,255,0.07); }
+
+  .exercise {
+    margin: 28px 0; padding: 20px 24px;
+    background: var(--moss-dim); border-left: 3px solid var(--moss);
+    border-radius: 0 8px 8px 0;
+  }
+  .exercise__label {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    letter-spacing: 1.8px; text-transform: uppercase;
+    color: var(--moss); margin-bottom: 8px; display: block;
+  }
+  .exercise p { margin-bottom: 0.6em; }
+  .exercise p:last-child { margin-bottom: 0; }
+
+  .takeaways {
+    margin: 32px 0; padding: 24px 28px;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-bright); border-radius: 10px;
+    list-style: none;
+  }
+  .takeaways li {
+    font-size: 19px; padding: 10px 0 10px 22px;
+    border-bottom: 1px dashed var(--border);
+    position: relative;
+  }
+  .takeaways li:last-child { border-bottom: none; }
+  .takeaways li::before {
+    content: '·'; color: var(--cyan); font-weight: 600;
+    font-family: var(--font-mono);
+    position: absolute; left: 4px; top: 10px;
+  }
+
+  .bridge {
+    margin-top: 80px; padding: 36px 32px;
+    background: var(--surface-elevated); border: 1px solid var(--border-bright);
+    border-radius: 12px; border-left: 4px solid var(--cyan);
+  }
+  .bridge__label {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--cyan); margin-bottom: 12px;
+  }
+  .bridge__title {
+    font-weight: 600; font-size: 26px;
+    color: var(--text-bright); margin-bottom: 10px;
+  }
+  .bridge p { color: var(--text-dim); margin-bottom: 0; font-size: 18px; }
+  .bridge a { color: var(--accent); }
+  html[data-theme="dark"] .bridge a { color: var(--accent-bright); }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .hero, .toc, .section { animation: fadeUp 0.5s ease-out both; }
+  .toc { animation-delay: 0.05s; }
+  .section { animation-delay: 0.10s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .page { padding: 36px 20px 80px; }
+    .site-header { padding: 14px 20px; }
+    body { font-size: 18px; }
+    .lead { font-size: 20px; }
+    h2 { font-size: 27px; margin-top: 48px; }
+    h3 { font-size: 20px; }
+    .pullquote { font-size: 21px; padding-left: 18px; }
+    .code-block { font-size: 11.5px; padding: 14px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+
+<header class="site-header">
+  <span class="site-header__title">Python Concurrency Decoded</span>
+  <button class="theme-toggle" data-theme-toggle aria-label="Toggle theme">◐ Theme</button>
+</header>
+
+<article class="page prose">
+
+  <header class="hero">
+    <div class="hero__series">Part 4 of 7 · asyncio 101</div>
+    <h1 class="hero__title">The Two-Way Door</h1>
+    <p class="hero__subtitle">Generators, <code>send</code>, <code>throw</code>, <code>yield from</code>, and the single protocol all of asyncio is made of. Open a REPL — every snippet here is meant to be run.</p>
+    <div class="hero__meta">
+      <span>~18 min read</span>
+      <span>Python 3.11+</span>
+      <span>REPL recommended</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <div class="toc__label">In this post</div>
+    <ol>
+      <li><a href="#s1">A function you can pause</a></li>
+      <li><a href="#s2"><code>yield</code> is a two-way door</a></li>
+      <li><a href="#s3">Three ways back in: <code>send</code>, <code>throw</code>, <code>close</code></a></li>
+      <li><a href="#s4"><code>yield from</code> — transparent delegation</a></li>
+      <li><a href="#s5"><code>async def</code> is sugar over a generator</a></li>
+      <li><a href="#s6">The Future: a parking spot you can resolve</a></li>
+      <li><a href="#s7">The Task: the driver that pumps the coroutine</a></li>
+      <li><a href="#s8">One clean trace, no elision</a></li>
+      <li><a href="#s9">Take with you</a></li>
+    </ol>
+  </nav>
+
+  <section class="section">
+
+    <p class="lead">Part 4 of the cancellation post lost you, and rightly. It claimed <em>"<code>async</code> doesn't mean yields"</em> without first building the picture of what a yield even <em>is</em>. This post fixes that. By the end, you should be able to take a single coroutine, run it under a driver you wrote yourself in forty lines, and point at the exact instruction where it parks.</p>
+
+    <p>The whole of asyncio is one mechanism repeated at three layers: a function you can pause, a value that flows out of the pause, and a driver that pumps the resumes. Generators are the mechanism. Coroutines are generators with a coat of paint. Futures and Tasks are the bookkeeping that makes the mechanism schedulable. There is nothing else.</p>
+
+    <div class="callout">
+      <span class="callout__label">From Go</span>
+      <p>In Go, a goroutine parks and the runtime does the bookkeeping invisibly — you cannot point at the instruction. Python makes the same bookkeeping a language-level protocol you can see, implement, and step through with <code>pdb</code>. The cost is a small protocol you have to learn. The win is: there is no magic left after this post.</p>
+    </div>
+
+    <h2 id="s1"><span class="num">§1</span>A function you can pause</h2>
+
+    <p>A generator is a function whose execution you can stop in the middle and resume later. The stop point is <code>yield</code>. That is the only new idea on the page.</p>
+
+<pre class="code-block"><span class="kw">def</span> <span class="fn">counter</span>():
+    <span class="kw">yield</span> <span class="num">1</span>
+    <span class="kw">yield</span> <span class="num">2</span>
+    <span class="kw">yield</span> <span class="num">3</span>
+
+g = <span class="fn">counter</span>()         <span class="com"># calling it does NOT run the body; it returns a generator object</span>
+<span class="fn">print</span>(g.<span class="fn">send</span>(<span class="kw">None</span>))     <span class="com"># 1   — runs until first yield, pauses</span>
+<span class="fn">print</span>(g.<span class="fn">send</span>(<span class="kw">None</span>))     <span class="com"># 2   — resumes, runs until next yield</span>
+<span class="fn">print</span>(g.<span class="fn">send</span>(<span class="kw">None</span>))     <span class="com"># 3</span>
+<span class="fn">print</span>(g.<span class="fn">send</span>(<span class="kw">None</span>))     <span class="com"># raises StopIteration — body fell off the end</span></pre>
+
+    <p>Three things to notice. Calling <code>counter()</code> doesn't print anything — generators are <em>lazy</em>; the body runs only when something pumps the generator. Each <code>send</code> runs the body until it hits a <code>yield</code>, at which point execution suspends with the local frame intact — variables, line number, everything. The fourth <code>send</code> raises <code>StopIteration</code> because the body has nothing left to do.</p>
+
+    <p>You may know <code>next(g)</code> instead of <code>g.send(None)</code>. They are the same — <code>next</code> is just sugar for "resume with <code>None</code>". I'll use <code>send</code> throughout because the asyncio machinery uses <code>send</code> explicitly, and we want to keep one vocabulary.</p>
+
+    <div class="exercise">
+      <span class="exercise__label">Exercise 1</span>
+      <p>Paste <code>counter</code> into a REPL. Call <code>g.send(None)</code> four times. Observe the <code>StopIteration</code>.</p>
+      <p>Then: add <code>print("before yield 2")</code> between the first two <code>yield</code>s. Does it print on the first <code>send</code> or the second? Predict, then check.</p>
+    </div>
+
+    <h2 id="s2"><span class="num">§2</span><code>yield</code> is a two-way door</h2>
+
+    <p>The thing that makes <code>yield</code> more than "pause" is that it carries a value <strong>in both directions</strong>. <code>yield E</code> emits <code>E</code> outward — that becomes the return value of <code>send</code>. And <code>yield</code> as an expression also evaluates to whatever you <code>.send()</code> back in on the next resume.</p>
+
+<pre class="code-block"><span class="kw">def</span> <span class="fn">echo</span>():
+    <span class="kw">while True</span>:
+        received = <span class="kw">yield</span> <span class="str">"what?"</span>
+        <span class="fn">print</span>(<span class="str">"you sent:"</span>, received)
+
+g = <span class="fn">echo</span>()
+<span class="fn">print</span>(g.<span class="fn">send</span>(<span class="kw">None</span>))    <span class="com"># "what?"</span>
+<span class="fn">print</span>(g.<span class="fn">send</span>(<span class="str">"hi"</span>))    <span class="com"># prints "you sent: hi", then returns "what?"</span>
+<span class="fn">print</span>(g.<span class="fn">send</span>(<span class="str">"bye"</span>))   <span class="com"># prints "you sent: bye", then returns "what?"</span></pre>
+
+    <p>Trace one full round trip. <code>g.send(None)</code> runs the body up to <code>yield "what?"</code>; the string travels outward and becomes the return value of <code>send</code>. The generator is paused with execution sitting at the yield, the value <code>"what?"</code> already handed off. When you call <code>g.send("hi")</code>, the <code>"hi"</code> travels <em>inward</em> and becomes the value of the <code>yield</code> expression — so <code>received = "hi"</code>. The body then runs until the next <code>yield</code>, which emits another <code>"what?"</code>.</p>
+
+    <pre class="pullquote"><code>yield E</code> does two things: it emits E outward, and on resume it evaluates to whatever came back in.</pre>
+
+    <p>This is also why the first <code>send</code> <em>must</em> be <code>send(None)</code>. There is no yield expression paused yet, waiting to receive a value — the body hasn't started running. Sending anything other than <code>None</code> on the first call raises <code>TypeError: can't send non-None value to a just-started generator</code>. Try it.</p>
+
+    <div class="exercise">
+      <span class="exercise__label">Exercise 2</span>
+      <p>What value does <code>g.send(None)</code> in <code>echo</code> assign to <code>received</code> on the second call? Predict, then run <code>g = echo(); g.send(None); g.send(None)</code> and read it. (The answer is <code>None</code> — a yield can receive any value, including the absence of one.)</p>
+    </div>
+
+    <h2 id="s3"><span class="num">§3</span>Three ways back in: <code>send</code>, <code>throw</code>, <code>close</code></h2>
+
+    <p>You have three methods to resume a paused generator. They differ in what happens at the yield point when execution lands back on it.</p>
+
+<pre class="code-block">g.<span class="fn">send</span>(value)      <span class="com"># resume with `value` as the result of the yield expression</span>
+g.<span class="fn">throw</span>(exc)       <span class="com"># resume by RAISING `exc` at the yield point</span>
+g.<span class="fn">close</span>()          <span class="com"># resume by raising GeneratorExit; cleanup only — cannot be suppressed</span></pre>
+
+    <p>The <code>throw</code> path matters because it is exactly how cancellation works. When asyncio cancels a Task, it ultimately calls <code>coro.throw(CancelledError())</code> on the running coroutine — the <code>await</code> that was paused suddenly raises <code>CancelledError</code> instead of returning a value, and the exception unwinds through the call stack like any other.</p>
+
+<pre class="code-block"><span class="kw">def</span> <span class="fn">life</span>():
+    <span class="kw">try</span>:
+        <span class="kw">while True</span>:
+            x = <span class="kw">yield</span>
+            <span class="fn">print</span>(<span class="str">"got:"</span>, x)
+    <span class="kw">except</span> <span class="ty">ValueError</span> <span class="kw">as</span> e:
+        <span class="fn">print</span>(<span class="str">"caught:"</span>, e)
+    <span class="kw">finally</span>:
+        <span class="fn">print</span>(<span class="str">"cleanup"</span>)
+
+g = <span class="fn">life</span>()
+g.<span class="fn">send</span>(<span class="kw">None</span>)                       <span class="com"># start — pause at yield</span>
+g.<span class="fn">send</span>(<span class="num">1</span>)                          <span class="com"># prints: got: 1</span>
+g.<span class="fn">throw</span>(<span class="ty">ValueError</span>(<span class="str">"oops"</span>))         <span class="com"># prints: caught: oops, then cleanup, then StopIteration</span></pre>
+
+    <p><code>throw</code> raises the exception <em>at the yield</em>, not at the call site. The body's <code>try/except</code> catches it. If the body did not catch <code>ValueError</code>, the exception would propagate out of <code>throw</code> into the caller — same as any uncaught exception. The <code>finally</code> always runs.</p>
+
+    <div class="exercise">
+      <span class="exercise__label">Exercise 3</span>
+      <p>Replace <code>g.throw(ValueError("oops"))</code> with <code>g.close()</code>. Run it. What prints? Why? (Hint: <code>close</code> raises <code>GeneratorExit</code>, which your <code>except ValueError</code> does not match, but <code>finally</code> still runs.)</p>
+      <p>Bonus: what happens if you try to <code>yield</code> from inside an <code>except GeneratorExit</code> clause? The interpreter refuses — <code>close</code> is mandatory, not advisory.</p>
+    </div>
+
+    <h2 id="s4"><span class="num">§4</span><code>yield from</code> — transparent delegation</h2>
+
+    <p>You write a generator that wants to delegate some of its work to another generator. The naïve way is to loop: <code>for x in inner(): yield x</code>. This forwards yields outward, but it does <em>not</em> forward <code>send</code> values or <code>throw</code> exceptions inward — they get absorbed by the for-loop, not the inner generator. <code>yield from</code> fixes that: it splices the inner generator in transparently. Sends, throws, and the inner's <code>return</code> value all flow through.</p>
+
+<pre class="code-block"><span class="kw">def</span> <span class="fn">inner</span>():
+    x = <span class="kw">yield</span> <span class="str">"inner-1"</span>
+    <span class="fn">print</span>(<span class="str">"inner got:"</span>, x)
+    <span class="kw">return</span> <span class="num">99</span>                       <span class="com"># becomes the value of `yield from inner()`</span>
+
+<span class="kw">def</span> <span class="fn">outer</span>():
+    result = <span class="kw">yield from</span> <span class="fn">inner</span>()
+    <span class="fn">print</span>(<span class="str">"outer got:"</span>, result)
+    <span class="kw">yield</span> <span class="str">"outer-done"</span>
+
+g = <span class="fn">outer</span>()
+<span class="fn">print</span>(g.<span class="fn">send</span>(<span class="kw">None</span>))      <span class="com"># "inner-1"  — outer is paused inside inner's first yield</span>
+<span class="fn">print</span>(g.<span class="fn">send</span>(<span class="str">"hello"</span>))   <span class="com"># prints "inner got: hello", "outer got: 99", returns "outer-done"</span></pre>
+
+    <p>Three subtleties worth pinning down. First, <code>yield from inner()</code> is itself a single expression whose value is whatever <code>inner</code> <code>return</code>s — that's how a delegated generator hands a result back. Second, while outer is suspended inside inner, the topmost <code>send</code> drives inner directly — the outer's frame is just a passthrough. Third, this is the protocol <code>await</code> will turn out to be a thin sugar over.</p>
+
+    <h2 id="s5"><span class="num">§5</span><code>async def</code> is sugar over a generator</h2>
+
+    <p>An <code>async def</code> function compiles, mechanically, to something very close to a generator. The compiled code object carries a <code>CO_COROUTINE</code> flag instead of <code>CO_GENERATOR</code>, but the underlying machinery is the same. The biggest user-visible difference is the keyword: you write <code>await x</code> instead of <code>yield from x</code>, and <code>await x</code> desugars (essentially) to <code>yield from x.__await__()</code>.</p>
+
+<pre class="code-block"><span class="kw">class</span> <span class="ty">Awaitable</span>:
+    <span class="kw">def</span> <span class="fn">__await__</span>(self):
+        received = <span class="kw">yield</span> <span class="str">"signal"</span>            <span class="com"># yielded UP to whoever is pumping us</span>
+        <span class="fn">print</span>(<span class="str">"awaitable got:"</span>, received)
+        <span class="kw">return</span> <span class="num">42</span>                          <span class="com"># becomes the value of `await Awaitable()`</span>
+
+<span class="kw">async def</span> <span class="fn">coro</span>():
+    x = <span class="kw">await</span> <span class="ty">Awaitable</span>()
+    <span class="kw">return</span> x + <span class="num">1</span>
+
+c = <span class="fn">coro</span>()
+<span class="fn">print</span>(c.<span class="fn">send</span>(<span class="kw">None</span>))             <span class="com"># "signal"</span>
+<span class="kw">try</span>:
+    c.<span class="fn">send</span>(<span class="str">"hi"</span>)                  <span class="com"># "awaitable got: hi"; raises StopIteration(43)</span>
+<span class="kw">except</span> <span class="ty">StopIteration</span> <span class="kw">as</span> e:
+    <span class="fn">print</span>(<span class="str">"done:"</span>, e.value)         <span class="com"># done: 43</span></pre>
+
+    <p>Read it line by line. <code>coro()</code> returns a coroutine object — same lazy story as a generator. <code>c.send(None)</code> runs the body until <code>await Awaitable()</code>, which desugars to <code>yield from Awaitable().__await__()</code>. That descends into the iterator, hits <code>yield "signal"</code>, and the string travels all the way up to the topmost <code>send</code>. Now we resume with <code>"hi"</code>: it flows down through the <code>yield from</code> to land at the <code>yield</code> inside <code>__await__</code>, where <code>received = "hi"</code>. <code>__await__</code> then returns <code>42</code>, which becomes the value of the <code>await</code> expression in <code>coro</code>, which assigns <code>x = 42</code>. The body returns <code>43</code>, which surfaces as <code>StopIteration(43)</code> at the top.</p>
+
+    <div class="callout callout--warn">
+      <span class="callout__label">Misconception</span>
+      <p>"<code>await</code> yields control to the event loop." Half right. <code>await x</code> yields control <em>only if</em> <code>x.__await__()</code> reaches a <code>yield</code> on something the loop has not yet resolved. If <code>__await__</code> runs straight through and returns, the <code>await</code> evaluates immediately and no suspension happens. <code>async</code> grants the right to suspend. It does not force one.</p>
+    </div>
+
+    <h2 id="s6"><span class="num">§6</span>The Future: a parking spot you can resolve</h2>
+
+    <p>Everything above is generic. Now the asyncio-specific layer. asyncio has one type whose <code>__await__</code> matters: <code>asyncio.Future</code>. It is a placeholder for a value that will arrive later, plus the machinery to wake whoever is waiting on it. Real CPython source, the one method that matters:</p>
+
+<pre class="code-block"><span class="com"># cpython/Lib/asyncio/futures.py</span>
+<span class="kw">def</span> <span class="fn">__await__</span>(self):
+    <span class="kw">if not</span> self.<span class="fn">done</span>():
+        self._asyncio_future_blocking = <span class="kw">True</span>
+        <span class="hl"><span class="kw">yield</span> self</span>                  <span class="com"># hand SELF up to the Task</span>
+    <span class="kw">if not</span> self.<span class="fn">done</span>():
+        <span class="kw">raise</span> <span class="ty">RuntimeError</span>(<span class="str">"await wasn't used with future"</span>)
+    <span class="kw">return</span> self.<span class="fn">result</span>()         <span class="com"># the data channel: returns the value or raises</span></pre>
+
+    <p>This is the entire pivot of asyncio. When the Future is not done, it yields <em>itself</em> — not a status code, not <code>None</code>, the actual Future object. That object travels up through every <code>yield from</code> in the chain and lands at the topmost driver, which is a Task. The Task pulls the Future out of <code>send</code>, looks at it, and says: "ah, a Future. I'll register a callback to wake me when it resolves, and stop pumping until then." The coroutine is now <em>parked on that Future</em>.</p>
+
+    <p>One question this answers cleanly: in the asyncio machinery, what does <code>.send()</code> actually carry? On the way up: the Future (the parking ticket). On the way back down: nothing useful — the Task always resumes with <code>send(None)</code>. So where does the result come from? From <code>self.result()</code> inside <code>__await__</code>, after the resume. <strong>The Future is the data channel. <code>send</code> is just the scheduling channel.</strong> That is a real distinction, and it is the one your draft glossed.</p>
+
+    <div class="callout">
+      <span class="callout__label">Mental model</span>
+      <p>Picture two pipes between the coroutine and the Task. The <em>scheduling pipe</em> carries one signal: "park me on this Future." The <em>data pipe</em> is the Future object itself, into which the result will eventually be poured. Resume is a kick that says "look at your Future again" — and the Future, now <code>done()</code>, hands you the value via <code>self.result()</code>.</p>
+    </div>
+
+    <h2 id="s7"><span class="num">§7</span>The Task: the driver that pumps the coroutine</h2>
+
+    <p>A Task is the thing that calls <code>coro.send(None)</code> repeatedly until the coroutine is done. It is created by <code>asyncio.create_task</code> or by the event loop's own bootstrap. The body of <code>Task.__step</code> is the loop you would have written yourself if you'd been asked to write a driver. Trimmed but honest:</p>
+
+<pre class="code-block"><span class="com"># cpython/Lib/asyncio/tasks.py — Task.__step, the heart of it</span>
+<span class="kw">def</span> <span class="fn">__step</span>(self, exc=<span class="kw">None</span>):
+    coro = self._coro
+    <span class="kw">try</span>:
+        <span class="kw">if</span> exc <span class="kw">is None</span>:
+            result = coro.<span class="fn">send</span>(<span class="kw">None</span>)          <span class="com"># pump it</span>
+        <span class="kw">else</span>:
+            result = coro.<span class="fn">throw</span>(<span class="kw">type</span>(exc), exc)  <span class="com"># inject (e.g. CancelledError)</span>
+    <span class="kw">except</span> <span class="ty">StopIteration</span> <span class="kw">as</span> e:
+        self.<span class="fn">set_result</span>(e.value)              <span class="com"># coroutine finished — record result</span>
+        <span class="kw">return</span>
+    <span class="kw">else</span>:
+        <span class="kw">if</span> <span class="fn">getattr</span>(result, <span class="str">"_asyncio_future_blocking"</span>, <span class="kw">False</span>):
+            <span class="com"># it's a Future — park on it</span>
+            <span class="hl">self._fut_waiter = result</span>
+            result.<span class="fn">add_done_callback</span>(self.<span class="fn">__wakeup</span>)
+
+<span class="kw">def</span> <span class="fn">__wakeup</span>(self, fut):
+    self._fut_waiter = <span class="kw">None</span>
+    self.<span class="fn">__step</span>()                            <span class="com"># pump again — the Future is now done</span></pre>
+
+    <p>One <code>send</code>, one of two outcomes. Either the coroutine finished (<code>StopIteration</code>) and we record its return value, or it yielded a Future — in which case we save the Future in <code>_fut_waiter</code> and register <code>__wakeup</code> as the Future's done-callback. When the Future is resolved (by a timer firing, a socket becoming readable, another task calling <code>set_result</code>), <code>__wakeup</code> runs, which calls <code>__step</code>, which calls <code>coro.send(None)</code> again. Back inside the coroutine, control returns from the <code>yield self</code> in <code>Future.__await__</code>; the <code>if not self.done():</code> guard now passes; <code>self.result()</code> returns the value; the <code>await</code> expression evaluates; the coroutine runs onward until the next yield.</p>
+
+    <p><code>_fut_waiter</code> is a real attribute on the Task. anyio reads it directly to ask "is this task currently parked on a Future?" — which is how cancellation decides whether to deliver inline or defer. That comes next post.</p>
+
+    <h2 id="s8"><span class="num">§8</span>One clean trace, no elision</h2>
+
+    <p>Time to put it all together. Below is a complete, runnable asyncio in fifty lines — a toy event loop, a toy Future, a toy Task, a toy <code>sleep</code>, and two coroutines that race. Paste it into a file, run it with <code>python tiny.py</code>, and read along.</p>
+
+<pre class="code-block"><span class="com"># tiny.py — asyncio in 50 lines. Runs on plain CPython. No imports of asyncio.</span>
+<span class="kw">import</span> heapq, time, types
+
+<span class="kw">class</span> <span class="ty">Future</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self):
+        self._done = <span class="kw">False</span>
+        self._result = <span class="kw">None</span>
+        self._callbacks = []
+    <span class="kw">def</span> <span class="fn">done</span>(self): <span class="kw">return</span> self._done
+    <span class="kw">def</span> <span class="fn">set_result</span>(self, v):
+        self._done = <span class="kw">True</span>; self._result = v
+        <span class="kw">for</span> cb <span class="kw">in</span> self._callbacks: cb(self)
+    <span class="kw">def</span> <span class="fn">add_done_callback</span>(self, cb): self._callbacks.<span class="fn">append</span>(cb)
+    <span class="kw">def</span> <span class="fn">__await__</span>(self):
+        <span class="kw">if not</span> self._done:
+            <span class="kw">yield</span> self                          <span class="com"># the one true suspension</span>
+        <span class="kw">return</span> self._result
+
+<span class="kw">class</span> <span class="ty">Loop</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self):
+        self._ready = []                              <span class="com"># tasks to step now</span>
+        self._scheduled = []                          <span class="com"># [(when, callback), ...] — heap</span>
+    <span class="kw">def</span> <span class="fn">call_later</span>(self, delay, cb):
+        heapq.<span class="fn">heappush</span>(self._scheduled, (time.<span class="fn">monotonic</span>() + delay, cb))
+    <span class="kw">def</span> <span class="fn">create_task</span>(self, coro):
+        t = <span class="ty">Task</span>(coro, self); self._ready.<span class="fn">append</span>(t); <span class="kw">return</span> t
+    <span class="kw">def</span> <span class="fn">run</span>(self):
+        <span class="kw">while</span> self._ready <span class="kw">or</span> self._scheduled:
+            now = time.<span class="fn">monotonic</span>()
+            <span class="kw">while</span> self._scheduled <span class="kw">and</span> self._scheduled[<span class="num">0</span>][<span class="num">0</span>] &lt;= now:
+                _, cb = heapq.<span class="fn">heappop</span>(self._scheduled); <span class="fn">cb</span>()
+            <span class="kw">if</span> self._ready:
+                t = self._ready.<span class="fn">pop</span>(<span class="num">0</span>); t.<span class="fn">step</span>()
+            <span class="kw">elif</span> self._scheduled:
+                time.<span class="fn">sleep</span>(<span class="fn">max</span>(<span class="num">0</span>, self._scheduled[<span class="num">0</span>][<span class="num">0</span>] - now))
+
+<span class="kw">class</span> <span class="ty">Task</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, coro, loop):
+        self.coro = coro; self.loop = loop
+    <span class="kw">def</span> <span class="fn">step</span>(self):
+        <span class="kw">try</span>:
+            fut = self.coro.<span class="fn">send</span>(<span class="kw">None</span>)             <span class="com"># pump — get a Future back</span>
+        <span class="kw">except</span> <span class="ty">StopIteration</span>: <span class="kw">return</span>            <span class="com"># done</span>
+        fut.<span class="fn">add_done_callback</span>(<span class="kw">lambda</span> _f: self.loop._ready.<span class="fn">append</span>(self))
+
+<span class="kw">def</span> <span class="fn">sleep</span>(loop, delay):
+    fut = <span class="ty">Future</span>()
+    loop.<span class="fn">call_later</span>(delay, <span class="kw">lambda</span>: fut.<span class="fn">set_result</span>(<span class="kw">None</span>))
+    <span class="kw">return</span> fut                                  <span class="com"># a Future IS awaitable — see __await__ above</span>
+
+<span class="kw">async def</span> <span class="fn">say</span>(loop, name, delay):
+    <span class="kw">await</span> <span class="fn">sleep</span>(loop, delay)
+    <span class="fn">print</span>(name, <span class="str">"at"</span>, <span class="fn">round</span>(time.<span class="fn">monotonic</span>() - t0, <span class="num">2</span>))
+
+loop = <span class="ty">Loop</span>(); t0 = time.<span class="fn">monotonic</span>()
+loop.<span class="fn">create_task</span>(<span class="fn">say</span>(loop, <span class="str">"A"</span>, <span class="num">1.0</span>))
+loop.<span class="fn">create_task</span>(<span class="fn">say</span>(loop, <span class="str">"B"</span>, <span class="num">0.5</span>))
+loop.<span class="fn">run</span>()                                       <span class="com"># prints B at 0.5, then A at 1.0</span></pre>
+    <p class="code-caption">Run it. Output: <code>B at 0.5</code>, then <code>A at 1.0</code>. Total wall time ≈ 1s, not 1.5s — because they ran concurrently.</p>
+
+    <p>Trace the first few steps mentally with the code in front of you. <code>loop.run()</code> pops Task A off <code>_ready</code> and calls <code>step</code>. <code>step</code> runs <code>self.coro.send(None)</code> — this descends into <code>say</code>, hits <code>await sleep(loop, 1.0)</code>, which builds a Future, schedules a timer to resolve it at <code>t0+1.0</code>, and returns the Future. <code>await</code> on a Future calls <code>Future.__await__</code>, which yields <code>self</code> upward. Task A's <code>step</code> receives the Future, registers <code>add_done_callback(lambda _: ready.append(self))</code>, and returns. Task A is now parked. Same dance for Task B with delay 0.5.</p>
+
+    <p>Both tasks parked, <code>_ready</code> empty, <code>_scheduled</code> has two timers. Loop sleeps until the nearer one fires. At <code>t0+0.5</code>, the callback calls <code>fut.set_result(None)</code>, which runs the done-callback, which appends Task B to <code>_ready</code>. Loop wakes, pops B, calls <code>step</code>, calls <code>send(None)</code>. Back inside Task B's coroutine, the <code>yield self</code> in <code>Future.__await__</code> resumes; <code>self._done</code> is True; <code>__await__</code> returns <code>self._result</code> (None); the <code>await</code> evaluates; control flows to the <code>print</code> line. B at 0.5 prints. <code>say</code> body falls off the end → <code>StopIteration</code> → Task B is done. Same for A at <code>t0+1.0</code>.</p>
+
+    <div class="exercise">
+      <span class="exercise__label">Exercise 4</span>
+      <p>Open <code>tiny.py</code> in <code>pdb</code> and break on <code>Task.step</code>. Step into <code>self.coro.send(None)</code> the first time and watch the stack go: <code>step → say → sleep returns a Future → await Future → Future.__await__ → yield self</code>. The <code>yield self</code> is the only line where control leaves the coroutine.</p>
+      <p>Then: add a second <code>await sleep(loop, 0.5)</code> inside <code>say</code>. Predict the output. Run it. Why does each task now take its full delay before printing?</p>
+    </div>
+
+    <h2 id="s9"><span class="num">§9</span>Take with you</h2>
+
+    <ul class="takeaways">
+      <li><strong>A generator is a function with pause points.</strong> Calling it returns a generator object; <code>send</code> pumps it until the next <code>yield</code> or <code>StopIteration</code>.</li>
+      <li><strong><code>yield E</code> is a two-way door.</strong> <code>E</code> travels outward as the return value of <code>send</code>; whatever the next <code>send</code> carries travels inward as the value of the <code>yield</code> expression.</li>
+      <li><strong>Three ways back in:</strong> <code>send(v)</code>, <code>throw(exc)</code>, <code>close()</code>. <code>throw</code> raises <em>at the yield point</em>, which is exactly how cancellation lands.</li>
+      <li><strong><code>yield from</code> splices an inner generator in transparently.</strong> Sends and throws forward; the inner's <code>return</code> value becomes the value of <code>yield from</code>. <code>await</code> is essentially this with new syntax.</li>
+      <li><strong>asyncio's one suspension is <code>yield self</code> in <code>Future.__await__</code>.</strong> The Task pulls the Future out of <code>send</code>, parks on it, and resumes when the Future resolves. <code>send</code> carries scheduling; the Future carries the data.</li>
+    </ul>
+
+    <div class="bridge">
+      <div class="bridge__label">Up next · Part 5 of 7</div>
+      <div class="bridge__title"><a href="./anyio-101.html">Scopes and Checkpoints</a></div>
+      <p>With the protocol in hand, the second cancellation model — anyio's — stops looking magical and starts looking like a careful application of three things: <code>throw</code>, the Future a Task is parked on, and the rule that no task outlives the block that spawned it. Part 5 builds it.</p>
+    </div>
+
+  </section>
+</article>
+
+<script>
+  (function () {
+    const root = document.documentElement;
+    const key = 'theme-pcd';
+    const saved = localStorage.getItem(key);
+    if (saved === 'dark' || saved === 'light') root.setAttribute('data-theme', saved);
+    const btn = document.querySelector('[data-theme-toggle]');
+    btn && btn.addEventListener('click', () => {
+      const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      localStorage.setItem(key, next);
+    });
+  })();
+
+  (function () {
+    const bar = document.getElementById('progress');
+    const compute = () => {
+      const h = document.documentElement;
+      const max = h.scrollHeight - h.clientHeight;
+      const pct = max <= 0 ? 0 : (h.scrollTop || document.body.scrollTop) / max;
+      bar.style.width = (pct * 100).toFixed(2) + '%';
+    };
+    let ticking = false;
+    document.addEventListener('scroll', () => {
+      if (!ticking) { requestAnimationFrame(() => { compute(); ticking = false; }); ticking = true; }
+    }, { passive: true });
+    compute();
+  })();
+</script>
+
+</body>
+</html>

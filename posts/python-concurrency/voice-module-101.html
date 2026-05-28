@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>An Hour on One Loop — architecting a voice agent on Temporal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400;1,6..72,500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'Newsreader', 'Iowan Old Style', Palatino, Georgia, serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  }
+
+  html[data-theme="light"] {
+    --bg: #ebe1d2;
+    --bg-tint: #e2d6c3;
+    --surface: #f4ecdf;
+    --surface-elevated: #fbf6ec;
+    --surface-recessed: #e1d4c0;
+    --border: rgba(26, 22, 18, 0.13);
+    --border-bright: rgba(26, 22, 18, 0.28);
+    --text: #2a2218;
+    --text-bright: #1a1612;
+    --text-dim: #5c4f3e;
+    --text-muted: #8a7a64;
+
+    --accent: #c0562a;
+    --accent-dim: rgba(192, 86, 42, 0.12);
+    --accent-bright: #a8441f;
+    --persimmon: #d96e3c;
+    --persimmon-dim: rgba(217, 110, 60, 0.14);
+    --persimmon-bright: #c25729;
+    --indigo: #3a5068;
+    --indigo-dim: rgba(58, 80, 104, 0.12);
+    --moss: #5e6b3a;
+    --moss-dim: rgba(94, 107, 58, 0.12);
+    --rust: #9c3b1f;
+  }
+
+  html[data-theme="dark"] {
+    --bg: #1a1612;
+    --bg-tint: #221c16;
+    --surface: #221c16;
+    --surface-elevated: #2a231b;
+    --surface-recessed: #14100c;
+    --border: rgba(235, 225, 210, 0.11);
+    --border-bright: rgba(235, 225, 210, 0.24);
+    --text: #e6dcc9;
+    --text-bright: #f6efe1;
+    --text-dim: #b0a088;
+    --text-muted: #7d6f5b;
+
+    --accent: #e2854f;
+    --accent-dim: rgba(226, 133, 79, 0.15);
+    --accent-bright: #f09b63;
+    --persimmon: #e2854f;
+    --persimmon-dim: rgba(226, 133, 79, 0.14);
+    --persimmon-bright: #f4a06a;
+    --indigo: #8aaac9;
+    --indigo-dim: rgba(138, 170, 201, 0.14);
+    --moss: #9aab66;
+    --moss-dim: rgba(154, 171, 102, 0.14);
+    --rust: #e08054;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse at 8% -5%, var(--persimmon-dim) 0%, transparent 45%),
+      radial-gradient(ellipse at 95% 6%, var(--indigo-dim) 0%, transparent 42%);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 19px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    overflow-wrap: break-word;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+  body * { min-width: 0; }
+
+  .progress {
+    position: fixed; top: 0; left: 0; width: 0%; height: 2px;
+    background: linear-gradient(90deg, var(--persimmon), var(--accent));
+    z-index: 100; transition: width 0.08s linear;
+  }
+
+  .site-header {
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex; justify-content: space-between; align-items: center;
+    max-width: 1100px; margin: 0 auto;
+  }
+  .site-header__title {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 2.5px; text-transform: uppercase; color: var(--text-muted);
+  }
+  .theme-toggle {
+    background: none; border: 1px solid var(--border-bright);
+    color: var(--text-dim); padding: 6px 14px; border-radius: 4px;
+    cursor: pointer; font-family: var(--font-mono);
+    font-size: 11px; letter-spacing: 1px; transition: all 0.2s;
+  }
+  .theme-toggle:hover { border-color: var(--persimmon); color: var(--persimmon-bright); }
+
+  .page { max-width: 720px; margin: 0 auto; padding: 60px 32px 120px; }
+
+  .toc {
+    background: var(--surface-recessed); border: 1px solid var(--border);
+    border-radius: 8px; padding: 22px 28px; margin-bottom: 56px;
+  }
+  .toc__label {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--text-muted);
+    margin-bottom: 14px;
+  }
+  .toc ol {
+    list-style: none; counter-reset: toc;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px;
+  }
+  @media (max-width: 560px) { .toc ol { grid-template-columns: 1fr; } }
+  .toc li { counter-increment: toc; line-height: 1.4; }
+  .toc a {
+    color: var(--text-dim); text-decoration: none; font-size: 15px;
+    display: flex; gap: 12px; align-items: baseline; padding: 4px 0;
+    transition: color 0.15s;
+  }
+  .toc a:hover { color: var(--accent); }
+  .toc a::before {
+    content: counter(toc, decimal-leading-zero);
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--persimmon); font-weight: 500; min-width: 24px;
+  }
+
+  .hero { margin-bottom: 40px; padding-bottom: 36px; border-bottom: 1px solid var(--border); }
+  .hero__series {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--persimmon-bright);
+    margin-bottom: 20px;
+  }
+  .hero__series::before {
+    content: ''; display: inline-block; width: 24px; height: 1px;
+    background: var(--persimmon); vertical-align: middle; margin-right: 12px;
+    transform: translateY(-3px);
+  }
+  .hero__title {
+    font-family: var(--font-body); font-weight: 600;
+    font-size: clamp(36px, 5.5vw, 54px); line-height: 1.05;
+    letter-spacing: -1.2px; color: var(--text-bright);
+    margin-bottom: 18px; text-wrap: balance;
+  }
+  .hero__subtitle {
+    font-style: italic; font-size: 22px; line-height: 1.4;
+    color: var(--text-dim); max-width: 600px; margin-bottom: 28px;
+  }
+  .hero__meta {
+    font-family: var(--font-mono); font-size: 12px; color: var(--text-muted);
+    display: flex; gap: 20px; flex-wrap: wrap;
+  }
+  .hero__meta span { display: inline-flex; align-items: center; gap: 6px; }
+  .hero__meta span::before { content: ''; width: 4px; height: 4px; background: var(--text-muted); border-radius: 50%; }
+  .hero__meta span:first-child::before { display: none; }
+
+  .prose p { margin-bottom: 1.3em; text-wrap: pretty; }
+  .prose strong { color: var(--text-bright); font-weight: 600; }
+  .prose em { font-style: italic; color: var(--text-bright); }
+  .prose a {
+    color: var(--accent); text-decoration: underline;
+    text-decoration-thickness: 1px; text-underline-offset: 3px;
+  }
+  html[data-theme="dark"] .prose a { color: var(--persimmon-bright); }
+  .prose > p code, .prose li code, .callout code, .takeaways code {
+    font-family: var(--font-mono); font-size: 0.78em;
+    background: var(--persimmon-dim); color: var(--accent-bright);
+    padding: 1px 6px; border-radius: 3px; font-weight: 500;
+  }
+  html[data-theme="dark"] .prose > p code, html[data-theme="dark"] .prose li code { color: var(--persimmon-bright); }
+
+  .lead { font-size: 22px; line-height: 1.55; color: var(--text-bright); margin-bottom: 36px; }
+
+  h2 {
+    font-family: var(--font-body); font-weight: 600; font-size: 32px;
+    line-height: 1.15; letter-spacing: -0.6px; color: var(--text-bright);
+    margin-top: 64px; margin-bottom: 8px; text-wrap: balance; scroll-margin-top: 24px;
+  }
+  h2 .num {
+    font-family: var(--font-mono); font-size: 13px; font-weight: 500;
+    color: var(--persimmon); letter-spacing: 1px; display: block; margin-bottom: 6px;
+  }
+  h3 {
+    font-family: var(--font-body); font-weight: 600; font-size: 22px;
+    line-height: 1.3; color: var(--text-bright); margin-top: 36px; margin-bottom: 12px;
+  }
+
+  .code-block {
+    font-family: var(--font-mono); font-size: 13px; line-height: 1.65;
+    background: var(--surface-recessed); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 16px 20px; margin: 24px 0;
+    overflow-x: auto; white-space: pre;
+    box-shadow: inset 0 1px 3px rgba(26, 22, 18, 0.06);
+  }
+  .code-block .kw  { color: var(--rust); font-weight: 500; }
+  .code-block .com { color: var(--text-muted); font-style: italic; }
+  .code-block .str { color: var(--moss); }
+  .code-block .num { color: var(--indigo); }
+  .code-block .fn  { color: var(--persimmon-bright); }
+  .code-block .ty  { color: var(--accent); font-weight: 500; }
+  html[data-theme="dark"] .code-block .ty { color: var(--accent-bright); }
+  html[data-theme="dark"] .code-block .num { color: var(--indigo); }
+  .code-block .hl  { background: var(--persimmon-dim); padding: 0 4px; border-radius: 2px; }
+
+  .code-caption {
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+    margin-top: -16px; margin-bottom: 28px; padding-left: 4px; letter-spacing: 0.3px;
+  }
+
+  .pullquote {
+    margin: 48px 0; padding: 0 0 0 28px; border-left: 3px solid var(--persimmon);
+    font-style: italic; font-size: 24px; line-height: 1.4; color: var(--text-bright);
+  }
+
+  .callout {
+    margin: 32px 0; padding: 18px 22px;
+    background: var(--persimmon-dim); border-left: 3px solid var(--persimmon);
+    border-radius: 0 8px 8px 0; font-size: 17px; line-height: 1.55;
+  }
+  .callout--warn { background: var(--indigo-dim); border-left-color: var(--indigo); }
+  .callout--trap { background: var(--accent-dim); border-left-color: var(--accent); }
+  .callout__label {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    letter-spacing: 1.8px; text-transform: uppercase;
+    color: var(--persimmon-bright); margin-bottom: 6px; display: block;
+  }
+  .callout--warn .callout__label { color: var(--indigo); }
+  .callout--trap .callout__label { color: var(--accent); }
+  html[data-theme="dark"] .callout--warn .callout__label { color: var(--indigo); }
+  html[data-theme="dark"] .callout--trap .callout__label { color: var(--accent-bright); }
+  .callout p { margin-bottom: 0; }
+  .callout p + p { margin-top: 10px; }
+
+  .diagram {
+    margin: 40px 0; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 28px 24px; box-shadow: 0 1px 3px rgba(26, 22, 18, 0.05);
+  }
+  .diagram__title {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 1.5px; text-transform: uppercase; color: var(--persimmon); margin-bottom: 4px;
+  }
+  .diagram__caption {
+    font-family: var(--font-body); font-size: 15px; font-style: italic;
+    color: var(--text-dim); margin-bottom: 22px; max-width: 580px;
+  }
+  .diagram svg { display: block; width: 100%; height: auto; max-width: 100%; }
+
+  .table-wrap {
+    margin: 32px 0; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  }
+  .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.data { width: 100%; border-collapse: collapse; font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
+  table.data th {
+    background: var(--surface-recessed);
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1.4px; color: var(--text-dim);
+    text-align: left; padding: 12px 16px; border-bottom: 2px solid var(--border-bright); white-space: nowrap;
+  }
+  table.data td { padding: 14px 16px; border-bottom: 1px solid var(--border); vertical-align: top; color: var(--text); }
+  table.data tr:last-child td { border-bottom: none; }
+  table.data tr:nth-child(even) td { background: var(--persimmon-dim); }
+  table.data td:first-child { font-family: var(--font-mono); font-size: 13px; color: var(--accent); font-weight: 500; white-space: nowrap; }
+  html[data-theme="dark"] table.data td:first-child { color: var(--accent-bright); }
+
+  .takeaways {
+    margin: 32px 0; padding: 24px 28px; background: var(--surface-elevated);
+    border: 1px solid var(--border); border-radius: 10px; list-style: none;
+  }
+  .takeaways li { font-size: 18px; padding: 10px 0 10px 22px; border-bottom: 1px dashed var(--border); position: relative; }
+  .takeaways li:last-child { border-bottom: none; }
+  .takeaways li::before { content: '·'; color: var(--persimmon); font-weight: 600; font-family: var(--font-mono); position: absolute; left: 4px; top: 10px; }
+
+  /* Flip cards: predict the death path */
+  .flipgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 36px 0; }
+  @media (max-width: 560px) { .flipgrid { grid-template-columns: 1fr; } }
+  .flip { perspective: 1000px; cursor: pointer; min-height: 150px; }
+  .flip__inner { position: relative; width: 100%; height: 100%; min-height: 150px; transition: transform 0.5s; transform-style: preserve-3d; }
+  .flip.flipped .flip__inner { transform: rotateY(180deg); }
+  .flip__face {
+    position: absolute; inset: 0; backface-visibility: hidden;
+    border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .flip__front { background: var(--surface-elevated); }
+  .flip__back { background: var(--surface-recessed); transform: rotateY(180deg); border-left: 3px solid var(--persimmon); }
+  .flip__q { font-family: var(--font-mono); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--persimmon); margin-bottom: 8px; }
+  .flip__trigger { font-size: 17px; color: var(--text-bright); line-height: 1.4; }
+  .flip__a { font-size: 15px; line-height: 1.5; color: var(--text); }
+  .flip__a code { font-family: var(--font-mono); font-size: 0.82em; color: var(--accent); }
+  html[data-theme="dark"] .flip__a code { color: var(--accent-bright); }
+  .flip__hint { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); margin-top: 12px; }
+
+  .bridge {
+    margin-top: 80px; padding: 36px 32px; background: var(--surface-elevated);
+    border: 1px solid var(--border); border-radius: 12px; border-left: 4px solid var(--persimmon);
+  }
+  .bridge__label { font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--persimmon); margin-bottom: 12px; }
+  .bridge__title { font-weight: 600; font-size: 24px; color: var(--text-bright); margin-bottom: 10px; }
+  .bridge p { color: var(--text-dim); margin-bottom: 0; font-size: 17px; }
+
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .hero, .toc, .section { animation: fadeUp 0.5s ease-out both; }
+  .toc { animation-delay: 0.05s; }
+  .section { animation-delay: 0.10s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+    .flip__inner { transition: none; }
+  }
+
+  @media (max-width: 640px) {
+    .page { padding: 36px 20px 80px; }
+    .site-header { padding: 14px 20px; }
+    body { font-size: 17px; }
+    .lead { font-size: 19px; }
+    h2 { font-size: 26px; margin-top: 48px; }
+    h3 { font-size: 19px; }
+    .pullquote { font-size: 20px; padding-left: 18px; }
+    .code-block { font-size: 12px; padding: 14px 16px; }
+    .diagram { padding: 20px 14px; }
+  }
+
+  .diag-text { font-family: var(--font-mono); font-size: 11px; fill: var(--text); }
+  .diag-text--dim { fill: var(--text-dim); }
+  .diag-text--label { font-size: 9.5px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+  .diag-arrow { stroke: var(--text-dim); stroke-width: 1.2; fill: none; }
+  .diag-fill-surface { fill: var(--surface-recessed); }
+  .diag-stroke-persimmon { stroke: var(--persimmon); }
+  .diag-stroke-indigo { stroke: var(--indigo); }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+
+<header class="site-header">
+  <span class="site-header__title">Voice Architecture · Temporal + Pipecat</span>
+  <button class="theme-toggle" data-theme-toggle aria-label="Toggle theme">◐ Theme</button>
+</header>
+
+<article class="page prose">
+
+  <header class="hero">
+    <div class="hero__series">Voice Module 101 · companion to Pipecat 101</div>
+    <h1 class="hero__title">An Hour on One Loop</h1>
+    <p class="hero__subtitle">Pipecat is the engine. A voice module is the chassis — a Temporal activity that holds one event loop open for half an hour, bridges WebRTC and Redis into a pipeline, and answers the question the engine leaves open: who ends the call, and who cleans up after it?</p>
+    <div class="hero__meta">
+      <span>~15 min read</span>
+      <span>Temporal · Pipecat · asyncio</span>
+      <span>Assumes: Pipecat 101</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <div class="toc__label">In this post</div>
+    <ol>
+      <li><a href="#s1">The shape of a join</a></li>
+      <li><a href="#s2">Why an activity, not a workflow</a></li>
+      <li><a href="#s3">The heartbeat that pipecat can starve</a></li>
+      <li><a href="#s4">Audio without an SDK: the Redis bridge</a></li>
+      <li><a href="#s5">Four ways a call dies</a></li>
+      <li><a href="#s6">The leak in the finally block</a></li>
+      <li><a href="#s7">Injecting a frame from the outside</a></li>
+      <li><a href="#s8">Take with you</a></li>
+    </ol>
+  </nav>
+
+  <section class="section">
+
+    <p class="lead">A client POSTs to <code>/api/voice/join</code> and gets a response in milliseconds: a room name, a token, a workflow id. By the time that JSON is serialised, a second process is already opening — a pipeline that will run, detached, for as long as the conversation lasts, up to a thirty-minute ceiling. The HTTP request is over; the session is just beginning. Everything interesting about the voice module is in the gap between those two facts.</p>
+
+    <p>If you read <a href="./pipecat-101.html">Pipecat 101</a>, you know the engine: frames flowing through a chain of two-task processors on one event loop, never blocking. This post is about the parts Pipecat deliberately doesn't have an opinion on — who owns the loop, how audio gets in and out when there's no neat SDK for your transport, what ends the session, and how a session avoids leaking the dozen background tasks it spawned. These are the production questions, and the architecture below is one good answer: a thin stack of Temporal wrappers around a long-lived asyncio program. The same shape recurs whenever you put a stateful real-time workload behind a workflow engine, so the patterns are worth more than the specific code.</p>
+
+    <div class="callout">
+      <span class="callout__label">The mental model</span>
+      <p>Think of the module as three layers. A <strong>controller</strong> handles the synchronous <code>/join</code> request and launches a workflow. A <strong>workflow</strong> is a one-line Temporal wrapper that starts a single long-running activity. The <strong>activity</strong> is where the real program lives: it builds a Pipecat pipeline, owns the event loop for the session's lifetime, and is the only place asyncio tasks and threads are allowed to exist. The whole post is really about that activity.</p>
+    </div>
+
+    <h2 id="s1"><span class="num">§1</span>The shape of a join</h2>
+
+    <p>Two transports, selected by a discriminated union on the request body. <strong>LiveKit</strong> is the direct path — a browser or SDK connects over WebRTC, and the module just mints room tokens. <strong>Recall</strong> is the indirect path — a headless browser that Recall.ai drives joins a Google Meet as a participant, and audio has to be bridged in and out through a channel that has nothing to do with WebRTC. We'll spend most of our time on Recall, because the indirect path is where the interesting plumbing lives.</p>
+
+    <p>Inside the pipeline, two topologies. The default is <strong>cascade</strong> — discrete services chained, exactly the shape from Pipecat 101:</p>
+
+<pre class="code-block"><span class="ty">Transport Input</span>  (LiveKit | Recall)
+  → <span class="ty">STT</span>            (deepgram | elevenlabs)
+  → <span class="ty">DelegationNotificationProcessor</span>   <span class="com"># a Redis Pub/Sub listener, §7</span>
+  → <span class="ty">LLM Context Aggregator</span> (user)
+  → <span class="ty">LLM</span>            (litellm → shared router, or direct anthropic/openai/gemini)
+  → <span class="ty">TTS</span>            (elevenlabs)
+  → <span class="ty">Transport Output</span> (LiveKit | Recall)
+  → <span class="ty">LLM Context Aggregator</span> (assistant)</pre>
+    <p class="code-caption">The cascade pipeline. Each arrow is a push_frame hop between processors; tool-calling (delegation) hangs off the LLM service.</p>
+
+    <p>The alternative is <strong>speech-to-speech</strong>: a single OpenAI Realtime service, audio in and audio out, no separate STT/LLM/TTS and — for now — no tool calling. Cascade trades latency for control: you can swap the STT vendor, inspect the transcript, register tools. S2S trades control for latency: one multimodal model with its own built-in turn detection. The module supports both behind one config flag, and almost everything below applies to either.</p>
+
+    <h2 id="s2"><span class="num">§2</span>Why an activity, not a workflow</h2>
+
+    <p>This is the decision that shapes everything, and it's a direct consequence of how Temporal works. A Temporal <em>workflow</em> must be deterministic — it's replayed from an event history to recover state, so it cannot do anything whose result varies between runs. No wall-clock reads, no random, no raw network I/O, and — critically — no spawning your own asyncio tasks or threads. A Pipecat pipeline is nothing <em>but</em> those forbidden things: it creates twenty tasks, opens websockets, sleeps on a clock. It cannot live in a workflow.</p>
+
+    <p>So the workflow is a one-line shim, and the pipeline runs in an <em>activity</em>, where arbitrary async code is allowed:</p>
+
+<pre class="code-block"><span class="kw">class</span> <span class="ty">RunVoicePipelineWorkflow</span>:
+    <span class="kw">async def</span> <span class="fn">execute</span>(self, input) -> <span class="ty">RunVoicePipelineWorkflowOutput</span>:
+        <span class="kw">return await</span> workflow.<span class="fn">execute_activity</span>(
+            run_voice_pipeline,
+            input,
+            start_to_close_timeout=timedelta(seconds=PIPELINE_MAX_DURATION_SECONDS),
+            heartbeat_timeout=timedelta(seconds=PIPELINE_HEARTBEAT_TIMEOUT_SECONDS),
+            retry_policy=<span class="ty">RetryPolicy</span>(maximum_attempts=<span class="num">1</span>),   <span class="com"># see the trap below</span>
+        )</pre>
+    <p class="code-caption">The workflow exists only to launch the activity with the right timeouts and retry policy. All the logic is one layer down.</p>
+
+    <p>Look at <code>maximum_attempts=1</code>. Temporal's default is to retry a failed activity forever, which is the right instinct for an idempotent task and exactly wrong for a voice call. A crashed session can't be resumed — the audio is gone, the user has to reconnect. Retrying it just spawns a fresh pipeline that the disconnected client will never talk to: a zombie. The comment in the source is blunt about why this matters, and it's the hinge for the next section.</p>
+
+    <div class="callout callout--warn">
+      <span class="callout__label">Serialisation boundary</span>
+      <p>A <code>BaseTransport</code> is not Temporal-serialisable — you can't pass a live websocket through an activity boundary. So the transport is <em>born inside</em> the activity, not handed to it. This is why <code>run_voice_pipeline</code> calls <code>TransportRegistry.create_transport(...)</code> as its very first line, rather than receiving a transport as an argument. The activity is the boundary where "serialisable Temporal world" ends and "live stateful objects" begins.</p>
+    </div>
+
+    <h2 id="s3"><span class="num">§3</span>The heartbeat that pipecat can starve</h2>
+
+    <p>A long-running Temporal activity has to prove it's alive. It does that by heartbeating — calling <code>activity.heartbeat()</code> periodically — and if Temporal doesn't hear one within the heartbeat timeout, it declares the activity dead and (absent the retry cap above) reschedules it. The voice activity runs the heartbeat as its own asyncio task, alongside the pipeline:</p>
+
+<pre class="code-block"><span class="kw">async def</span> <span class="fn">run_voice_pipeline</span>(input) -> <span class="ty">RunVoicePipelineWorkflowOutput</span>:
+    transport = TransportRegistry.<span class="fn">create_transport</span>(input.transport_config, input.config)
+    heartbeat_task = asyncio.<span class="fn">create_task</span>(<span class="fn">_heartbeat_loop</span>(input.room_name))
+    <span class="kw">try</span>:
+        <span class="kw">return await</span> <span class="ty">VoicePipelineService</span>().<span class="fn">run</span>(input, transport)
+    <span class="kw">finally</span>:
+        heartbeat_task.<span class="fn">cancel</span>()
+        <span class="kw">try</span>:
+            <span class="kw">await</span> heartbeat_task
+        <span class="kw">except</span> asyncio.<span class="ty">CancelledError</span>:
+            <span class="kw">pass</span></pre>
+    <p class="code-caption">The activity body. The heartbeat loop and the pipeline are two tasks sharing one event loop. Note the finally: the heartbeat is always cancelled and awaited, never orphaned.</p>
+
+    <p>And here's where the two posts collide. The heartbeat loop is just <code>await asyncio.sleep(15); activity.heartbeat(...)</code> on repeat. It only fires if the event loop gives it time. Now recall the cardinal rule from Pipecat 101: <em>never block the loop.</em> If anything in the pipeline blocks — a synchronous call, a busy-loop, a CPU task that should have gone to a thread — the heartbeat task doesn't get scheduled. It misses its window. Temporal concludes the activity has died, kills it, and the loop blocking that started it all just produced a zombie session.</p>
+
+    <pre class="pullquote">Blocking the event loop doesn't just glitch the audio. It starves the heartbeat, and Temporal kills the whole session for a crime it didn't commit.</pre>
+
+    <p>This is exactly the failure the <code>maximum_attempts=1</code> defends against. Picture the chain: a Pipecat busy-loop starves the heartbeat, the activity times out, Temporal retries it under the default policy, and each retry spawns another zombie that also busy-loops. The retry cap turns an unbounded zombie fountain into a single clean failure. The lesson generalises past voice: <strong>when you run an asyncio program under a liveness check, the liveness check is itself a coroutine competing for the loop, and blocking the loop kills your monitor before it kills your work.</strong></p>
+
+    <h2 id="s4"><span class="num">§4</span>Audio without an SDK: the Redis bridge</h2>
+
+    <p>LiveKit hands Pipecat a transport that already speaks audio. Recall does not. Recall's headless browser joins the Meet and exposes raw audio over a pair of WebSocket connections — one inbound, one outbound — and there is no Pipecat transport for "PCM over a websocket I have to manage myself." So the module builds one, and it uses Redis pub/sub as the seam between the WebSocket handlers (which live in FastAPI routes) and the pipeline (which lives in the activity, possibly on a different worker entirely).</p>
+
+    <div class="diagram">
+      <div class="diagram__title">The Recall audio bridge</div>
+      <div class="diagram__caption">Recall's browser speaks PCM over two websockets. FastAPI route handlers relay each direction through a Redis pub/sub channel; custom FrameProcessors at the pipeline's edges bridge Redis to the frame world.</div>
+      <svg viewBox="0 0 680 270" role="img" aria-label="Recall browser connects to FastAPI websocket routes, which bridge through Redis pub/sub channels to RecallAudioInputProcessor and RecallAudioOutputProcessor inside the pipeline.">
+        <!-- recall -->
+        <rect x="10" y="100" width="110" height="60" rx="8" class="diag-fill-surface diag-stroke-persimmon" stroke-width="1.4"/>
+        <text x="65" y="126" text-anchor="middle" class="diag-text">Recall</text>
+        <text x="65" y="142" text-anchor="middle" class="diag-text diag-text--dim">headless browser</text>
+        <!-- ws in -->
+        <path d="M 120 118 L 188 95" class="diag-arrow" marker-end="url(#bh1)"/>
+        <text x="150" y="98" text-anchor="middle" class="diag-text diag-text--label" fill="var(--persimmon)">WS in</text>
+        <!-- ws out -->
+        <path d="M 188 175 L 120 150" class="diag-arrow" marker-end="url(#bh1)"/>
+        <text x="150" y="184" text-anchor="middle" class="diag-text diag-text--label" fill="var(--indigo)">WS out</text>
+        <!-- redis in -->
+        <rect x="190" y="72" width="150" height="44" rx="6" class="diag-fill-surface" stroke="var(--border-bright)" stroke-width="1.2"/>
+        <text x="265" y="90" text-anchor="middle" class="diag-text">redis audio-in</text>
+        <text x="265" y="106" text-anchor="middle" class="diag-text diag-text--dim">pub/sub</text>
+        <!-- redis out -->
+        <rect x="190" y="154" width="150" height="44" rx="6" class="diag-fill-surface" stroke="var(--border-bright)" stroke-width="1.2"/>
+        <text x="265" y="172" text-anchor="middle" class="diag-text">redis audio-out</text>
+        <text x="265" y="188" text-anchor="middle" class="diag-text diag-text--dim">pub/sub</text>
+        <!-- arrows redis -> processors -->
+        <path d="M 340 94 L 410 94" class="diag-arrow" marker-end="url(#bh1)"/>
+        <path d="M 480 176 L 340 176" class="diag-arrow" marker-end="url(#bh1)"/>
+        <!-- processors -->
+        <rect x="412" y="68" width="170" height="52" rx="6" class="diag-fill-surface diag-stroke-persimmon" stroke-width="1.3"/>
+        <text x="497" y="90" text-anchor="middle" class="diag-text">RecallAudioInput</text>
+        <text x="497" y="106" text-anchor="middle" class="diag-text diag-text--dim">→ InputAudioRawFrame</text>
+        <rect x="412" y="150" width="170" height="52" rx="6" class="diag-fill-surface diag-stroke-indigo" stroke-width="1.3"/>
+        <text x="497" y="172" text-anchor="middle" class="diag-text">RecallAudioOutput</text>
+        <text x="497" y="188" text-anchor="middle" class="diag-text diag-text--dim">OutputAudioRawFrame →</text>
+        <!-- pipeline bracket -->
+        <path d="M 600 60 L 612 60 L 612 210 L 600 210" class="diag-arrow" fill="none"/>
+        <text x="628" y="138" text-anchor="middle" class="diag-text diag-text--dim" transform="rotate(90 628 138)">pipeline (in the activity)</text>
+        <defs>
+          <marker id="bh1" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="none" stroke="var(--text-dim)" stroke-width="1.2"/></marker>
+        </defs>
+      </svg>
+    </div>
+
+    <p>The inbound side is a custom <code>FrameProcessor</code> that, on <code>StartFrame</code>, subscribes to its Redis channel and spawns two tasks — a consumer and a watchdog:</p>
+
+<pre class="code-block"><span class="kw">async def</span> <span class="fn">_start</span>(self) -> <span class="kw">None</span>:
+    queue, cancel = <span class="kw">await</span> broadcaster.<span class="fn">subscribe</span>(channel)
+    self._cancel_subscription = cancel
+    self._consumer_task = asyncio.<span class="fn">create_task</span>(self.<span class="fn">_consume_audio</span>(queue), ...)
+    self._timeout_task  = asyncio.<span class="fn">create_task</span>(self.<span class="fn">_no_audio_timeout</span>(), ...)
+
+<span class="kw">async def</span> <span class="fn">_consume_audio</span>(self, queue: asyncio.<span class="ty">Queue</span>) -> <span class="kw">None</span>:
+    <span class="kw">try</span>:
+        <span class="kw">while True</span>:
+            chunk: <span class="ty">bytes</span> = <span class="kw">await</span> queue.<span class="fn">get</span>()
+            self._audio_received = <span class="kw">True</span>
+            <span class="kw">await</span> self.<span class="fn">push_frame</span>(
+                <span class="ty">InputAudioRawFrame</span>(audio=chunk, sample_rate=<span class="num">16000</span>, num_channels=<span class="num">1</span>)
+            )
+    <span class="kw">except</span> asyncio.<span class="ty">CancelledError</span>:
+        <span class="kw">raise</span>                       <span class="com"># re-raise — the lesson from Pipecat 101</span></pre>
+    <p class="code-caption">The custom transport's start hook. The consumer turns Redis bytes into the same <code>InputAudioRawFrame</code> the LiveKit transport would emit. Downstream, the pipeline can't tell the difference.</p>
+
+    <p>That's the elegant part: once a chunk becomes an <code>InputAudioRawFrame</code>, the rest of the pipeline is identical regardless of transport. The bridge's whole job is to make Recall's exotic audio path produce the same frame LiveKit produces, then get out of the way. The outbound processor does the mirror — it takes <code>OutputAudioRawFrame</code>s, wraps each in a WAV header (so the browser's Web Audio API can decode them natively), and publishes to the audio-out channel, where the outbound WebSocket relays them back to Recall's microphone.</p>
+
+    <h2 id="s5"><span class="num">§5</span>Four ways a call dies</h2>
+
+    <p>A request/response handler has one way to end: it returns. A long-lived session has many, and getting all of them to converge on a clean teardown is most of the engineering. A voice call ends when the user leaves, when nobody ever joins, when it hits the duration ceiling, or — for Recall — when a <code>bot.done</code> webhook fires. Each path has to reach the same place: an <code>EndFrame</code> in the pipeline, which propagates through every processor and unwinds the session.</p>
+
+    <p>Before the mechanism, predict it. Each card is an ending — what carries the session to its grave?</p>
+
+    <div class="flipgrid" id="deaths">
+      <div class="flip" tabindex="0">
+        <div class="flip__inner"><div class="flip__face flip__front">
+          <div class="flip__q">Ending 01</div>
+          <div class="flip__trigger">Nobody joins the room. The pipeline is built and waiting, but no audio ever arrives.</div>
+          <div class="flip__hint">tap to reveal</div>
+        </div><div class="flip__face flip__back">
+          <div class="flip__a">A <code>_no_audio_timeout</code> task, started alongside the consumer, sleeps for the join timeout and then checks a flag. If <code>_audio_received</code> is still false, it pushes an <code>EndFrame</code> itself. The watchdog and the consumer are siblings; one delivers audio, the other delivers the deadline.</div>
+        </div></div>
+      </div>
+      <div class="flip" tabindex="0">
+        <div class="flip__inner"><div class="flip__face flip__front">
+          <div class="flip__q">Ending 02</div>
+          <div class="flip__trigger">The call runs long. It's been thirty minutes and the conversation never wrapped up.</div>
+          <div class="flip__hint">tap to reveal</div>
+        </div><div class="flip__face flip__back">
+          <div class="flip__a">Two nested ceilings. The service wraps the runner in <code>asyncio.wait_for(runner.run(task), timeout=MAX)</code>; on <code>TimeoutError</code> it force-cancels. Temporal's <code>start_to_close_timeout</code> is the outer backstop if the activity itself wedges. Belt and suspenders, because a wedged session is worse than a dropped one.</div>
+        </div></div>
+      </div>
+      <div class="flip" tabindex="0">
+        <div class="flip__inner"><div class="flip__face flip__front">
+          <div class="flip__q">Ending 03</div>
+          <div class="flip__trigger">Recall fires a <code>bot.done</code> webhook — the meeting ended on Google's side, outside our process entirely.</div>
+          <div class="flip__hint">tap to reveal</div>
+        </div><div class="flip__face flip__back">
+          <div class="flip__a">The webhook (HMAC-verified) publishes to a Redis session-control channel. A <code>_session_control_listener</code> task is subscribed; on <code>bot.done</code> it calls <code>task.queue_frame(EndFrame())</code>. The external event becomes an internal frame.</div>
+        </div></div>
+      </div>
+      <div class="flip" tabindex="0">
+        <div class="flip__inner"><div class="flip__face flip__front">
+          <div class="flip__q">Ending 04</div>
+          <div class="flip__trigger">The user just hangs up. Clean disconnect, mid-conversation.</div>
+          <div class="flip__hint">tap to reveal</div>
+        </div><div class="flip__face flip__back">
+          <div class="flip__a">The transport's own event wiring (LiveKit participant-leave, or the Recall listener) surfaces it as an <code>EndFrame</code>. Every path — timeout, ceiling, webhook, hangup — converges on the same frame, so teardown has exactly one code path to be correct.</div>
+        </div></div>
+      </div>
+    </div>
+
+    <p>Ending 03 is worth seeing in full, because it's a small masterclass in writing a loop that can't leak. The listener has to wait for an event that may never come, while also noticing if the pipeline finished for some other reason — and it must never outlive the session as an orphaned task:</p>
+
+<pre class="code-block"><span class="kw">async with</span> asyncio.<span class="fn">timeout</span>(PIPELINE_MAX_DURATION_SECONDS):   <span class="com"># hard ceiling on the whole loop</span>
+    <span class="kw">while True</span>:
+        <span class="kw">if</span> task.<span class="fn">has_finished</span>():
+            <span class="kw">break</span>                                <span class="com"># pipeline ended elsewhere — don't linger</span>
+        <span class="kw">try</span>:
+            raw = <span class="kw">await</span> asyncio.<span class="fn">wait_for</span>(queue.<span class="fn">get</span>(), timeout=<span class="num">2.0</span>)
+        <span class="kw">except</span> asyncio.<span class="ty">TimeoutError</span>:
+            <span class="kw">continue</span>                             <span class="com"># no event in 2s — loop back, re-check has_finished()</span>
+        event = json.<span class="fn">loads</span>(raw)
+        <span class="kw">if</span> event.<span class="fn">get</span>(<span class="str">"event"</span>) == <span class="str">"bot.done"</span>:
+            <span class="kw">if not</span> task.<span class="fn">has_finished</span>():
+                <span class="kw">await</span> task.<span class="fn">queue_frame</span>(<span class="ty">EndFrame</span>())
+            <span class="kw">break</span></pre>
+    <p class="code-caption">The session-control listener. The 2-second <code>wait_for</code> is the trick: a blocking <code>queue.get()</code> would never re-check <code>has_finished()</code>, so the listener would outlive a session that ended any other way.</p>
+
+    <p>The <code>wait_for(..., timeout=2.0)</code> is the move worth stealing. A bare <code>await queue.get()</code> blocks until a message arrives — but most sessions end without a <code>bot.done</code> at all (the user just leaves), so the message never comes and the listener hangs forever, a leaked task holding a Redis subscription. Wrapping the get in a 2-second timeout converts an indefinite block into a poll: every two seconds it wakes, re-checks <code>task.has_finished()</code>, and exits if the session died elsewhere. The outer <code>asyncio.timeout()</code> is the final guarantee that even a wedged listener dies at the duration ceiling. This is the same disconnect-detection problem the <a href="./sse-disconnect-detection.html">SSE field report</a> dissects — block, don't peek, but bound the block so you stay responsive to the other ways out.</p>
+
+    <h2 id="s6"><span class="num">§6</span>The leak in the finally block</h2>
+
+    <p>Now the bug this whole architecture exists to prevent — and that a naïve implementation will hit anyway, because it lives one layer below Pipecat's clean cancellation. The fix is straightforward once you've seen it: the service's run loop wraps the runner and, in a <code>finally</code>, cancels the pipeline task unconditionally.</p>
+
+<pre class="code-block"><span class="kw">try</span>:
+    <span class="kw">await</span> asyncio.<span class="fn">wait_for</span>(runner.<span class="fn">run</span>(task), timeout=PIPELINE_MAX_DURATION_SECONDS)
+<span class="kw">except</span> asyncio.<span class="ty">TimeoutError</span>:
+    <span class="kw">await</span> task.<span class="fn">cancel</span>(reason=<span class="str">"max duration exceeded"</span>)
+<span class="kw">finally</span>:
+    <span class="com"># Guarantee processor teardown regardless of how the runner exits</span>
+    <span class="com"># (normal EndFrame, timeout, unexpected exception, asyncio cancellation).</span>
+    <span class="com"># Without this, background tasks in services like ElevenLabsTTSService</span>
+    <span class="com"># (_receive_task, _keepalive_task) stay alive with _disconnecting=False,</span>
+    <span class="com"># leaking WebSocket connections and TTFB timers indefinitely.</span>
+    <span class="kw">try</span>:
+        <span class="kw">await</span> task.<span class="fn">cancel</span>(reason=<span class="str">"pipeline teardown"</span>)
+    <span class="kw">except</span> <span class="ty">Exception</span> <span class="kw">as</span> e:
+        logger.<span class="fn">error</span>(<span class="str">"Error cancelling voice pipeline task"</span>, error=str(e))</pre>
+    <p class="code-caption">The runner wrapper. The comment is the postmortem. <code>task.cancel()</code> is idempotent, so calling it in <code>finally</code> is safe even after a clean exit.</p>
+
+    <div class="callout callout--trap">
+      <span class="callout__label">This will bite you</span>
+      <p>An <code>EndFrame</code> flows through the pipeline and politely shuts each processor down — <em>if</em> the processor ties its lifetime to that frame. But a TTS service like ElevenLabs spawns a <code>_receive_task</code> and a <code>_keepalive_task</code> on its websocket, and gates their shutdown on an internal <code>_disconnecting</code> flag that a clean <code>EndFrame</code> path sets — but a timeout or an exception path does <em>not</em>. Miss the explicit <code>task.cancel()</code> and those two tasks keep the socket open and the TTFB timer running after the session is logically over. You don't see it in one call. You see it three hours later as a connection count that only climbs. The fix is the unconditional <code>finally</code> above; the diagnosis is the hard part.</p>
+    </div>
+
+    <p>The general shape — and the reason this is the natural sequel to Pipecat 101's cancellation section — is that <strong>clean teardown on the happy path is not teardown.</strong> A long-lived session exits four ways (§5), and three of them are not the happy path. Anything that frees a resource must run on <em>all</em> of them, which in practice means a <code>finally</code> that drives cancellation idempotently, not an <code>EndFrame</code> handler that only fires when the session ends the way you imagined.</p>
+
+    <h2 id="s7"><span class="num">§7</span>Injecting a frame from the outside</h2>
+
+    <p>The last piece is the one that makes this more than a phone line: the voice agent can hand a hard task to a background agent and keep talking while it runs. The LLM calls a <code>delegate_to_agent</code> tool, which fires an A2A request to an autonomous agent workflow with a callback URL. That workflow may run for minutes. The voice session does not wait — it carries on. When the background work finishes, it POSTs to a callback endpoint, which publishes to a Redis channel keyed by workflow id. And sitting in the live pipeline is a processor whose entire job is to listen on that channel and splice the result back into the conversation:</p>
+
+<pre class="code-block"><span class="kw">async def</span> <span class="fn">_consume_callbacks</span>(self) -> <span class="kw">None</span>:
+    <span class="kw">while True</span>:
+        raw_message = <span class="kw">await</span> self._callback_queue.<span class="fn">get</span>()
+        callback = <span class="fn">parse_voice_delegation_callback</span>(raw_message)
+        formatted = <span class="fn">format_voice_delegation_callback</span>(callback)
+        <span class="kw">await</span> self.<span class="fn">push_frame</span>(
+            <span class="ty">LLMMessagesAppendFrame</span>(
+                messages=[{<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: formatted}],
+                run_llm=<span class="kw">True</span>,          <span class="com"># append the result AND trigger a fresh turn</span>
+            )
+        )</pre>
+    <p class="code-caption">The delegation-notification processor. A background consumer task pushes a synthetic frame into the live pipeline, exactly as if the user had spoken.</p>
+
+    <p>This is where the frame abstraction earns its keep. The processor's consumer task isn't on the audio path at all — it's woken by a Redis message that could arrive at any moment — yet the only thing it does to influence the conversation is <code>push_frame</code> an <code>LLMMessagesAppendFrame</code> downstream. To the user aggregator and the LLM, an asynchronously-delivered tool result and a spoken sentence are the same kind of event: a frame in the queue. The <code>run_llm=True</code> flag tells the aggregator to not just append the result but trigger a new LLM turn, so the bot speaks up on its own — "okay, that report is ready" — without the user having said anything. A background event, injected into a real-time stream, through the one verb the whole engine is built on.</p>
+
+    <p>Notice the consumer is started on <code>StartFrame</code> and torn down on <code>EndFrame</code>/<code>CancelFrame</code>, with the same re-raise-<code>CancelledError</code> discipline as every other task in the module. By now that should read as the house style: every background task is born on a lifecycle frame, cancelled in an unsubscribe, and awaited so it can't outlive the session.</p>
+
+    <h2 id="s8"><span class="num">§8</span>Take with you</h2>
+
+    <ul class="takeaways">
+      <li>The pipeline runs in a Temporal <em>activity</em>, never a workflow — workflows must be deterministic, and a Pipecat pipeline is twenty tasks, live sockets, and clock sleeps. The activity is the boundary where serialisable Temporal state ends and stateful objects begin.</li>
+      <li>The heartbeat is a coroutine competing for the same loop as the pipeline. Block the loop and you starve the heartbeat — Temporal kills the session for a crime the audio glitch committed. <code>maximum_attempts=1</code> stops that from fountaining zombies.</li>
+      <li>The Recall transport bridges PCM over websockets through Redis pub/sub, and its only real job is to emit the same <code>InputAudioRawFrame</code> LiveKit would. Past the edge, the pipeline is transport-agnostic.</li>
+      <li>A long-lived session ends four ways; teardown must converge all of them on one <code>EndFrame</code>. Poll with a bounded <code>wait_for</code> instead of blocking forever, so the loop stays responsive to the other exits.</li>
+      <li>Clean teardown on the happy path is not teardown. Free resources in a <code>finally</code> that cancels idempotently — or leak a websocket per session and discover it hours later as a rising connection count.</li>
+      <li>Delegation injects a background result into a live conversation via a single <code>push_frame</code>. The frame abstraction makes an async callback and a spoken sentence indistinguishable to the LLM.</li>
+    </ul>
+
+    <div class="bridge">
+      <div class="bridge__label">Where to go next</div>
+      <div class="bridge__title">Back to the metal: cancellation and the disconnect contract</div>
+      <p>Every leak in this post is a cancellation story, and cancellation in Python async is subtler than it looks — deferred delivery, shielded scopes, the peek-versus-block question of who notices a dead connection. The <a href="./anyio-cancellation.html">anyio cancellation</a> piece builds the primitive from source, and the <a href="./sse-disconnect-detection.html">SSE disconnect field report</a> is the same bounded-poll pattern from §5, traced through five middleware layers to a real production leak.</p>
+    </div>
+
+  </section>
+</article>
+
+<script>
+  // Theme toggle
+  (function () {
+    const root = document.documentElement;
+    const btn = document.querySelector('[data-theme-toggle]');
+    const saved = localStorage.getItem('theme');
+    if (saved) root.setAttribute('data-theme', saved);
+    btn.addEventListener('click', () => {
+      const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      localStorage.setItem('theme', next);
+    });
+  })();
+
+  // Reading progress
+  (function () {
+    const bar = document.getElementById('progress');
+    const onScroll = () => {
+      const h = document.documentElement;
+      const max = h.scrollHeight - h.clientHeight;
+      bar.style.width = (max > 0 ? (h.scrollTop / max) * 100 : 0) + '%';
+    };
+    document.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+  })();
+
+  // Flip cards
+  (function () {
+    document.querySelectorAll('.flip').forEach((card) => {
+      const toggle = () => card.classList.toggle('flipped');
+      card.addEventListener('click', toggle);
+      card.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+      });
+    });
+  })();
+</script>
+
+</body>
+</html>

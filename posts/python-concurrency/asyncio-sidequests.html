@@ -380,8 +380,8 @@
 
   <header class="hero">
     <div class="hero__series">
-      Python Concurrency · Part 3 of 5
-      <span class="hero__progress"><span class="on">●</span><span class="on">●</span><span class="on">●</span>○○</span>
+      Python Concurrency · Part 3 of 7
+      <span class="hero__progress"><span class="on">●</span><span class="on">●</span><span class="on">●</span>○○○○</span>
     </div>
     <h1 class="hero__title">Asyncio Sidequests</h1>
     <p class="hero__subtitle">The pieces of asyncio that don't fit the clean scheduler story but matter in production: self-pipes, signals, debug mode, the error messages, the policy mess, contextvars, and uvloop.</p>
@@ -689,9 +689,9 @@ asyncio.<span class="fn">run</span>(<span class="fn">main</span>(), loop_factory
     </ul>
 
     <div class="bridge">
-      <div class="bridge__label">Up next · Part 4 of 5</div>
-      <div class="bridge__title"><a href="./anyio-cancellation.html">Two Ways to Cancel</a></div>
-      <p>asyncio gives you the mechanism. It doesn't give you the discipline. <code>asyncio.TaskGroup</code> in 3.11 was a half-step toward structured concurrency; anyio is the full one — checkpoints, cancel scopes, the guarantee that no task outlives the function that spawned it. Part 4 is the discipline layer, and the case for writing new async code anyio-first — starting one level down, at the protocols <code>await</code> is made of.</p>
+      <div class="bridge__label">Up next · Part 4 of 7</div>
+      <div class="bridge__title"><a href="./asyncio-101.html">The Two-Way Door</a></div>
+      <p>You've seen the loop drive coroutines, but never had to ask: what is a coroutine, mechanically? Part 4 goes down one level — generators, <code>send</code>, <code>throw</code>, <code>yield from</code>, and the desugaring that turns <code>await</code> into a yield from the iterator returned by <code>__await__</code>. With a REPL at your elbow and a complete forty-line asyncio you can step through under <code>pdb</code>. After this, the discipline layer (Part 5) and the cancellation trap (Part 6) stop looking like magic.</p>
     </div>
 
   </section>

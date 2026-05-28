@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>One Loop, Twenty Milliseconds — how Pipecat moves audio without ever blocking</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400;1,9..40,500&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'Fira Code', 'SF Mono', Consolas, monospace;
+  }
+
+  html[data-theme="light"] {
+    --bg: #eef1f4;
+    --bg-tint: #e3e8ee;
+    --surface: #f8fafb;
+    --surface-elevated: #ffffff;
+    --surface-recessed: #e6ebf0;
+    --border: rgba(26, 35, 50, 0.12);
+    --border-bright: rgba(26, 35, 50, 0.26);
+    --text: #1a2332;
+    --text-bright: #0c1422;
+    --text-dim: #46556a;
+    --text-muted: #76849a;
+
+    --accent: #176a8e;
+    --accent-dim: rgba(23, 106, 142, 0.10);
+    --accent-bright: #1d83b0;
+    --cyan: #2a7fa0;
+    --cyan-dim: rgba(42, 127, 160, 0.12);
+    --cyan-bright: #1d6f92;
+    --amber: #a8651a;
+    --amber-dim: rgba(168, 101, 26, 0.12);
+    --signal: #1f7a52;
+    --signal-dim: rgba(31, 122, 82, 0.10);
+    --rust: #9c3b22;
+  }
+
+  html[data-theme="dark"] {
+    --bg: #0d1420;
+    --bg-tint: #131d2e;
+    --surface: #131d2e;
+    --surface-elevated: #1a2638;
+    --surface-recessed: #0a101a;
+    --border: rgba(150, 190, 225, 0.11);
+    --border-bright: rgba(150, 190, 225, 0.24);
+    --text: #d4e0ee;
+    --text-bright: #eef4fb;
+    --text-dim: #93a4bc;
+    --text-muted: #66768e;
+
+    --accent: #5fb3d9;
+    --accent-dim: rgba(95, 179, 217, 0.14);
+    --accent-bright: #82c8e8;
+    --cyan: #5fb3d9;
+    --cyan-dim: rgba(95, 179, 217, 0.13);
+    --cyan-bright: #8ad2f0;
+    --amber: #e2a85a;
+    --amber-dim: rgba(226, 168, 90, 0.14);
+    --signal: #5fc596;
+    --signal-dim: rgba(95, 197, 150, 0.13);
+    --rust: #e08060;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 32px 32px, 32px 32px;
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 18px;
+    line-height: 1.68;
+    -webkit-font-smoothing: antialiased;
+    overflow-wrap: break-word;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+  body::before {
+    content: ''; position: fixed; inset: 0; z-index: -1;
+    background: radial-gradient(ellipse at 50% -10%, transparent 30%, var(--bg) 75%);
+    pointer-events: none;
+  }
+  body * { min-width: 0; }
+
+  .progress {
+    position: fixed; top: 0; left: 0; width: 0%; height: 2px;
+    background: linear-gradient(90deg, var(--cyan), var(--accent-bright));
+    z-index: 100; transition: width 0.08s linear;
+  }
+
+  .site-header {
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex; justify-content: space-between; align-items: center;
+    max-width: 1100px; margin: 0 auto;
+    background: var(--bg);
+  }
+  .site-header__title {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 2.5px; text-transform: uppercase; color: var(--text-muted);
+  }
+  .theme-toggle {
+    background: none; border: 1px solid var(--border-bright);
+    color: var(--text-dim); padding: 6px 14px; border-radius: 4px;
+    cursor: pointer; font-family: var(--font-mono);
+    font-size: 11px; letter-spacing: 1px; transition: all 0.2s;
+  }
+  .theme-toggle:hover { border-color: var(--cyan); color: var(--cyan-bright); }
+
+  .page { max-width: 728px; margin: 0 auto; padding: 60px 32px 120px; }
+
+  .toc {
+    background: var(--surface-recessed); border: 1px solid var(--border);
+    border-radius: 8px; padding: 22px 28px; margin-bottom: 56px;
+  }
+  .toc__label {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--text-muted);
+    margin-bottom: 14px;
+  }
+  .toc ol {
+    list-style: none; counter-reset: toc;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px;
+  }
+  @media (max-width: 560px) { .toc ol { grid-template-columns: 1fr; } }
+  .toc li { counter-increment: toc; line-height: 1.4; }
+  .toc a {
+    color: var(--text-dim); text-decoration: none; font-size: 15px;
+    display: flex; gap: 12px; align-items: baseline; padding: 4px 0;
+    transition: color 0.15s;
+  }
+  .toc a:hover { color: var(--accent-bright); }
+  .toc a::before {
+    content: counter(toc, decimal-leading-zero);
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--cyan); font-weight: 500; min-width: 24px;
+  }
+
+  .hero { margin-bottom: 40px; padding-bottom: 36px; border-bottom: 1px solid var(--border); }
+  .hero__series {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--cyan);
+    margin-bottom: 20px;
+  }
+  .hero__series::before {
+    content: ''; display: inline-block; width: 24px; height: 1px;
+    background: var(--cyan); vertical-align: middle; margin-right: 12px;
+    transform: translateY(-3px);
+  }
+  .hero__title {
+    font-family: var(--font-body); font-weight: 700;
+    font-size: clamp(34px, 5.4vw, 52px); line-height: 1.04;
+    letter-spacing: -1.4px; color: var(--text-bright);
+    margin-bottom: 18px; text-wrap: balance;
+  }
+  .hero__subtitle {
+    font-style: italic; font-size: 21px; line-height: 1.42;
+    color: var(--text-dim); max-width: 600px; margin-bottom: 28px;
+  }
+  .hero__meta {
+    font-family: var(--font-mono); font-size: 12px; color: var(--text-muted);
+    display: flex; gap: 20px; flex-wrap: wrap;
+  }
+  .hero__meta span { display: inline-flex; align-items: center; gap: 6px; }
+  .hero__meta span::before {
+    content: ''; width: 4px; height: 4px;
+    background: var(--text-muted); border-radius: 50%;
+  }
+  .hero__meta span:first-child::before { display: none; }
+
+  .prose p { margin-bottom: 1.3em; text-wrap: pretty; }
+  .prose strong { color: var(--text-bright); font-weight: 600; }
+  .prose em { font-style: italic; color: var(--text-bright); }
+  .prose a {
+    color: var(--accent-bright); text-decoration: underline;
+    text-decoration-thickness: 1px; text-underline-offset: 3px;
+  }
+  .prose > p code, .prose li code, .callout code, .takeaways code {
+    font-family: var(--font-mono); font-size: 0.8em;
+    background: var(--cyan-dim); color: var(--accent-bright);
+    padding: 1px 6px; border-radius: 3px; font-weight: 500;
+  }
+
+  .lead { font-size: 21px; line-height: 1.55; color: var(--text-bright); margin-bottom: 36px; }
+
+  h2 {
+    font-family: var(--font-body); font-weight: 700; font-size: 30px;
+    line-height: 1.15; letter-spacing: -0.7px; color: var(--text-bright);
+    margin-top: 64px; margin-bottom: 8px; text-wrap: balance;
+    scroll-margin-top: 24px;
+  }
+  h2 .num {
+    font-family: var(--font-mono); font-size: 13px; font-weight: 500;
+    color: var(--cyan); letter-spacing: 1px; display: block; margin-bottom: 6px;
+  }
+  h3 {
+    font-family: var(--font-body); font-weight: 600; font-size: 21px;
+    line-height: 1.3; color: var(--text-bright);
+    margin-top: 36px; margin-bottom: 12px;
+  }
+
+  .code-block {
+    font-family: var(--font-mono); font-size: 12.5px; line-height: 1.62;
+    background: var(--surface-recessed); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 16px 20px; margin: 24px 0;
+    overflow-x: auto; white-space: pre;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.12);
+  }
+  .code-block .kw  { color: var(--rust); font-weight: 500; }
+  .code-block .com { color: var(--text-muted); font-style: italic; }
+  .code-block .str { color: var(--signal); }
+  .code-block .num { color: var(--amber); }
+  .code-block .fn  { color: var(--cyan-bright); }
+  .code-block .ty  { color: var(--accent-bright); font-weight: 500; }
+  .code-block .hl  { background: var(--amber-dim); padding: 0 4px; border-radius: 2px; }
+
+  .code-caption {
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);
+    margin-top: -16px; margin-bottom: 28px; padding-left: 4px; letter-spacing: 0.3px;
+  }
+
+  .pullquote {
+    margin: 48px 0; padding: 0 0 0 28px;
+    border-left: 3px solid var(--cyan);
+    font-style: italic; font-size: 24px; line-height: 1.4;
+    color: var(--text-bright);
+  }
+
+  .callout {
+    margin: 32px 0; padding: 18px 22px;
+    background: var(--cyan-dim); border-left: 3px solid var(--cyan);
+    border-radius: 0 8px 8px 0;
+    font-size: 16.5px; line-height: 1.55;
+  }
+  .callout--warn { background: var(--amber-dim); border-left-color: var(--amber); }
+  .callout--trap { background: var(--accent-dim); border-left-color: var(--accent); }
+  .callout__label {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    letter-spacing: 1.8px; text-transform: uppercase;
+    color: var(--cyan); margin-bottom: 6px; display: block;
+  }
+  .callout--warn .callout__label { color: var(--amber); }
+  .callout--trap .callout__label { color: var(--accent-bright); }
+  .callout p { margin-bottom: 0; }
+  .callout p + p { margin-top: 10px; }
+
+  .diagram {
+    margin: 40px 0; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 28px 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+  }
+  .diagram__title {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--cyan); margin-bottom: 4px;
+  }
+  .diagram__caption {
+    font-family: var(--font-body); font-size: 14.5px; font-style: italic;
+    color: var(--text-dim); margin-bottom: 22px; max-width: 580px;
+  }
+  .diagram svg { display: block; width: 100%; height: auto; max-width: 100%; }
+
+  .table-wrap {
+    margin: 32px 0; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  }
+  .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.data {
+    width: 100%; border-collapse: collapse;
+    font-family: var(--font-body); font-size: 14.5px; line-height: 1.5;
+  }
+  table.data th {
+    background: var(--surface-recessed);
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1.4px; color: var(--text-dim);
+    text-align: left; padding: 12px 16px;
+    border-bottom: 2px solid var(--border-bright); white-space: nowrap;
+  }
+  table.data td {
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+    vertical-align: top; color: var(--text);
+  }
+  table.data tr:last-child td { border-bottom: none; }
+  table.data tr:nth-child(even) td { background: var(--cyan-dim); }
+  table.data td:first-child {
+    font-family: var(--font-mono); font-size: 12.5px;
+    color: var(--accent-bright); font-weight: 500; white-space: nowrap;
+  }
+
+  .takeaways {
+    margin: 32px 0; padding: 24px 28px;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border); border-radius: 10px;
+    list-style: none;
+  }
+  .takeaways li {
+    font-size: 17px; padding: 10px 0 10px 22px;
+    border-bottom: 1px dashed var(--border);
+    position: relative;
+  }
+  .takeaways li:last-child { border-bottom: none; }
+  .takeaways li::before {
+    content: '>'; color: var(--cyan); font-weight: 600;
+    font-family: var(--font-mono);
+    position: absolute; left: 2px; top: 10px;
+  }
+
+  /* Interactive frame-journey stepper */
+  .stepper { margin: 40px 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 24px; }
+  .stepper__title { font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--cyan); margin-bottom: 4px; }
+  .stepper__caption { font-size: 14.5px; font-style: italic; color: var(--text-dim); margin-bottom: 20px; }
+  .stepper__stage { font-family: var(--font-mono); font-size: 13px; color: var(--text-bright); min-height: 3.4em; margin-bottom: 16px; padding: 12px 14px; background: var(--surface-recessed); border-radius: 6px; border-left: 2px solid var(--cyan); }
+  .stepper__stage b { color: var(--cyan-bright); }
+  .stepper__controls { display: flex; gap: 10px; align-items: center; }
+  .stepper__btn { font-family: var(--font-mono); font-size: 12px; padding: 7px 16px; border-radius: 5px; border: 1px solid var(--border-bright); background: var(--surface-elevated); color: var(--text); cursor: pointer; transition: all 0.15s; }
+  .stepper__btn:hover:not(:disabled) { border-color: var(--cyan); color: var(--cyan-bright); }
+  .stepper__btn:disabled { opacity: 0.35; cursor: default; }
+  .stepper__dots { display: flex; gap: 6px; margin-left: auto; }
+  .stepper__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border-bright); transition: background 0.2s; }
+  .stepper__dot.on { background: var(--cyan); }
+
+  .bridge {
+    margin-top: 80px; padding: 36px 32px;
+    background: var(--surface-elevated); border: 1px solid var(--border);
+    border-radius: 12px; border-left: 4px solid var(--cyan);
+  }
+  .bridge__label {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--cyan); margin-bottom: 12px;
+  }
+  .bridge__title { font-weight: 700; font-size: 23px; color: var(--text-bright); margin-bottom: 10px; }
+  .bridge p { color: var(--text-dim); margin-bottom: 0; font-size: 16.5px; }
+
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .hero, .toc, .section { animation: fadeUp 0.5s ease-out both; }
+  .toc { animation-delay: 0.05s; }
+  .section { animation-delay: 0.10s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+
+  @media (max-width: 640px) {
+    .page { padding: 36px 20px 80px; }
+    .site-header { padding: 14px 20px; }
+    body { font-size: 17px; }
+    .lead { font-size: 19px; }
+    h2 { font-size: 25px; margin-top: 48px; }
+    h3 { font-size: 19px; }
+    .pullquote { font-size: 20px; padding-left: 18px; }
+    .code-block { font-size: 11.5px; padding: 14px 16px; }
+    .diagram { padding: 20px 14px; }
+  }
+
+  .diag-text { font-family: var(--font-mono); font-size: 11px; fill: var(--text); }
+  .diag-text--dim { fill: var(--text-dim); }
+  .diag-text--label { font-size: 9.5px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+  .diag-line { stroke: var(--border-bright); stroke-width: 1.2; fill: none; }
+  .diag-arrow { stroke: var(--text-dim); stroke-width: 1.2; fill: none; }
+  .diag-fill-surface { fill: var(--surface-recessed); }
+  .diag-stroke-cyan { stroke: var(--cyan); }
+  .diag-stroke-amber { stroke: var(--amber); }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+
+<header class="site-header">
+  <span class="site-header__title">Pantheon · Voice Internals</span>
+  <button class="theme-toggle" data-theme-toggle aria-label="Toggle theme">◐ Theme</button>
+</header>
+
+<article class="page prose">
+
+  <header class="hero">
+    <div class="hero__series">Pipecat 101 · sibling to the Python Concurrency series</div>
+    <h1 class="hero__title">One Loop, Twenty Milliseconds</h1>
+    <p class="hero__subtitle">How Pipecat moves real-time audio through a dozen AI services on a single asyncio event loop — and why every line of it is engineered around one rule: never block.</p>
+    <div class="hero__meta">
+      <span>~16 min read</span>
+      <span>Python 3.11+ · asyncio</span>
+      <span>Assumes: you know what an event loop is</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <div class="toc__label">In this post</div>
+    <ol>
+      <li><a href="#s1">The 20ms budget</a></li>
+      <li><a href="#s2">Frames are messages</a></li>
+      <li><a href="#s3">A processor is two tasks and a queue</a></li>
+      <li><a href="#s4">The pipeline is a linked list of tasks</a></li>
+      <li><a href="#s5">The cardinal sin, and the escape hatch</a></li>
+      <li><a href="#s6">Interruptions, where the design pays rent</a></li>
+      <li><a href="#s7">Cancellation is the hard part</a></li>
+      <li><a href="#s8">Take with you</a></li>
+    </ol>
+  </nav>
+
+  <section class="section">
+
+    <p class="lead">A voice agent is a soft real-time system wearing an AI costume. The model picking the next word is the part everyone talks about; the part that decides whether the product feels alive is whether a 20-millisecond chunk of microphone audio can cross the whole machine and come back as speech before the human notices the seam. Pipecat is the machinery that makes that crossing, and almost every interesting decision in it is a concurrency decision.</p>
+
+    <p>Here's the frame that the rest of this post hangs on. The transport hands you raw PCM in small chunks — at 16&nbsp;kHz mono, a 20&nbsp;ms chunk is 640 bytes, and it arrives fifty times a second, forever, for the length of the call. Those chunks have to flow through voice-activity detection, a speech-to-text service, a context aggregator, an LLM, a text-to-speech service, and back out to the speaker. Six network services and a neural net, chained, with a deadline measured against human perception. And it all runs on <em>one</em> asyncio event loop.</p>
+
+    <p>That last clause is the whole story. One loop means cooperative scheduling: nothing is preempted, every coroutine runs until it chooses to <code>await</code>, and while it runs nothing else does. If any step in that chain blocks the loop for 100&nbsp;ms — a synchronous HTTP call, a numpy operation on the main thread, a <code>time.sleep</code> someone left in — then for 100&nbsp;ms no audio moves, no VAD fires, and the interruption the user just spoke goes unheard. The glitch is audible. Pipecat's architecture is, top to bottom, a set of answers to "how do we keep the loop free."</p>
+
+    <div class="callout">
+      <span class="callout__label">From Go</span>
+      <p>If you've built pipelines in Go, the mental model is close: each stage is a goroutine, frames are values on channels, and <code>push_frame</code> is a channel send. The load-bearing difference is the scheduler. Go preempts — a goroutine stuck in a tight loop still yields because the runtime interrupts it. asyncio does not. A Pipecat processor that forgets to <code>await</code> is a goroutine the scheduler can never take the CPU back from. Cooperative scheduling is a contract, and the whole codebase is written to honour it.</p>
+    </div>
+
+    <h2 id="s1"><span class="num">§1</span>The 20ms budget</h2>
+
+    <p>Start with the clock, because the clock is what makes this hard. Conversational turn-taking breaks down somewhere north of ~300&nbsp;ms of latency between you finishing a sentence and the bot starting its reply — past that, people start talking over each other the way they do on a bad phone line. That 300&nbsp;ms is the budget for the <em>entire</em> round trip: end-of-speech detection, the final STT tokens, the LLM's first token, the first TTS audio, network on both ends. Every component is fighting for a slice of it.</p>
+
+    <p>Which means the scheduler's job is not "go fast." It's "never go away." A component that's fast on average but occasionally stalls the loop for 80&nbsp;ms is worse than one that's uniformly a bit slower, because the stall lands on whatever audio chunk was mid-flight and you hear it. The enemy is not latency; it's <em>latency variance injected into the event loop</em>. Hold that distinction — it explains why Pipecat reaches for threads in the three specific places it does and nowhere else.</p>
+
+    <h2 id="s2"><span class="num">§2</span>Frames are messages</h2>
+
+    <p>Nothing in a Pipecat pipeline calls anything else directly. Everything is a <code>Frame</code> pushed from one processor to the next. The base class is deliberately thin — it's a dataclass that stamps every instance with an id, a name, and a presentation timestamp:</p>
+
+<pre class="code-block"><span class="kw">class</span> <span class="ty">Frame</span>:
+    id: <span class="ty">int</span> = field(init=<span class="kw">False</span>)
+    name: <span class="ty">str</span> = field(init=<span class="kw">False</span>)
+    pts: <span class="ty">Optional</span>[<span class="ty">int</span>] = field(init=<span class="kw">False</span>)        <span class="com"># presentation timestamp, nanoseconds</span>
+    metadata: <span class="ty">Dict</span>[<span class="ty">str</span>, <span class="ty">Any</span>] = field(init=<span class="kw">False</span>)
+
+    <span class="kw">def</span> <span class="fn">__post_init__</span>(self):
+        self.id = <span class="fn">obj_id</span>()
+        self.name = <span class="str">f"{self.__class__.__name__}#{obj_count(self)}"</span>
+        self.pts = <span class="kw">None</span>
+        self.metadata = {}</pre>
+    <p class="code-caption">pipecat-core/src/pipecat/frames/frames.py — the base Frame. Audio, transcripts, LLM tokens, lifecycle signals: all of them subclass this.</p>
+
+    <p>The subclasses are where the interesting taxonomy lives, and it's not organised by <em>content</em> — it's organised by <em>scheduling priority</em>. There are three branches:</p>
+
+    <div class="table-wrap"><div class="table-scroll">
+    <table class="data">
+      <thead><tr><th>Category</th><th>Examples</th><th>Scheduling meaning</th></tr></thead>
+      <tbody>
+        <tr><td>SystemFrame</td><td>InputAudioRawFrame, StartInterruptionFrame, CancelFrame, StartFrame, EndFrame</td><td>Out-of-band. Jumps the queue. Processed even while normal frames are paused.</td></tr>
+        <tr><td>DataFrame</td><td>OutputAudioRawFrame, TextFrame, LLMTextFrame, TTSAudioRawFrame</td><td>The ordered payload. FIFO. Interruptible — dropped when the user barges in.</td></tr>
+        <tr><td>ControlFrame</td><td>EndFrame, LLMFullResponseStartFrame, TTSStartedFrame</td><td>Ordered like data, but signals state transitions rather than carrying payload.</td></tr>
+      </tbody>
+    </table>
+    </div></div>
+
+    <p>Why does a base class carry a notion of priority at all? Because of the central tension in any streaming system: most frames want strict ordering — you cannot play TTS audio out of sequence — but a few frames are <em>about</em> ordering and must violate it. "The user just interrupted you" is useless if it waits politely behind the three seconds of bot speech already queued up. The <code>SystemFrame</code> / <code>DataFrame</code> split is how Pipecat lets one channel carry both the payload and the control signals that need to overtake it. The mechanism that enforces it lives one layer down.</p>
+
+    <h2 id="s3"><span class="num">§3</span>A processor is two tasks and a queue</h2>
+
+    <p>The <code>FrameProcessor</code> is the atom of the system — every STT service, every aggregator, every transport is one. And the thing worth internalising is that a processor is not a function you call. It's a small concurrent machine: <strong>two asyncio tasks reading from two queues</strong>, wired so that out-of-band signals can overtake the payload stream.</p>
+
+    <p>Here is the state set up in <code>__init__</code>, stripped to the load-bearing fields:</p>
+
+<pre class="code-block"><span class="com"># Input side: a PRIORITY queue. System frames sort ahead of everything.</span>
+self.__input_queue = <span class="fn">FrameProcessorQueue</span>()
+self.__input_event: <span class="ty">Optional</span>[asyncio.<span class="ty">Event</span>] = <span class="kw">None</span>
+self.__input_frame_task: <span class="ty">Optional</span>[asyncio.<span class="ty">Task</span>] = <span class="kw">None</span>
+
+<span class="com"># Process side: a plain FIFO queue for ordered data/control frames.</span>
+self.__process_queue = asyncio.<span class="fn">Queue</span>()
+self.__process_event: <span class="ty">Optional</span>[asyncio.<span class="ty">Event</span>] = <span class="kw">None</span>
+self.__process_frame_task: <span class="ty">Optional</span>[asyncio.<span class="ty">Task</span>] = <span class="kw">None</span></pre>
+    <p class="code-caption">pipecat-core/src/pipecat/processors/frame_processor.py — two queues, two events, two tasks. The double-underscore name-mangling is deliberate: subclasses must not touch these.</p>
+
+    <p>The input queue isn't an ordinary <code>asyncio.Queue</code>. It's a <code>FrameProcessorQueue</code>, a subclass of <code>PriorityQueue</code> with exactly two tiers and a monotonic counter to keep insertion order <em>within</em> a tier:</p>
+
+<pre class="code-block"><span class="kw">class</span> <span class="ty">FrameProcessorQueue</span>(asyncio.<span class="ty">PriorityQueue</span>):
+    HIGH_PRIORITY = <span class="num">1</span>
+    LOW_PRIORITY  = <span class="num">2</span>
+
+    <span class="kw">async def</span> <span class="fn">put</span>(self, item):
+        frame, _, _ = item
+        <span class="kw">if</span> <span class="fn">isinstance</span>(frame, <span class="ty">SystemFrame</span>):
+            self.__high_counter += <span class="num">1</span>
+            <span class="kw">await</span> <span class="fn">super</span>().<span class="fn">put</span>((self.HIGH_PRIORITY, self.__high_counter, item))
+        <span class="kw">else</span>:
+            self.__low_counter += <span class="num">1</span>
+            <span class="kw">await</span> <span class="fn">super</span>().<span class="fn">put</span>((self.LOW_PRIORITY, self.__low_counter, item))</pre>
+    <p class="code-caption">A SystemFrame always sorts ahead of a DataFrame, regardless of arrival time. Within a tier, the counter preserves FIFO. This is the queue-jump from §2, made concrete.</p>
+
+    <p>Now the two tasks. The <strong>input task</strong> pulls from the priority queue. If the frame is a system frame, it handles it <em>right there</em>. If it's anything else, it forwards it to the FIFO process queue and moves on:</p>
+
+<pre class="code-block"><span class="kw">async def</span> <span class="fn">__input_frame_task_handler</span>(self):
+    <span class="kw">while True</span>:
+        (frame, direction, callback) = <span class="kw">await</span> self.__input_queue.<span class="fn">get</span>()
+
+        <span class="kw">if</span> self.__should_block_system_frames <span class="kw">and</span> self.__input_event:
+            <span class="kw">await</span> self.__input_event.<span class="fn">wait</span>()        <span class="com"># yields the loop; never spins</span>
+            self.__input_event.<span class="fn">clear</span>()
+            self.__should_block_system_frames = <span class="kw">False</span>
+
+        <span class="kw">if</span> <span class="fn">isinstance</span>(frame, <span class="ty">SystemFrame</span>):
+            <span class="kw">await</span> self.<span class="fn">__process_frame</span>(frame, direction, callback)   <span class="com"># handle now</span>
+        <span class="kw">elif</span> self.__process_queue:
+            <span class="kw">await</span> self.__process_queue.<span class="fn">put</span>((frame, direction, callback))  <span class="com"># defer</span>
+
+        self.__input_queue.<span class="fn">task_done</span>()</pre>
+    <p class="code-caption">The input task is the fast lane. A system frame never waits behind buffered audio — it's processed the moment it's dequeued.</p>
+
+    <p>The <strong>process task</strong> is the slow lane — it drains the FIFO queue and runs the actual work (the call out to the LLM, the TTS synthesis) for each ordered frame. Crucially it tracks the frame currently in flight, because that's the one an interruption will need to cancel:</p>
+
+<pre class="code-block"><span class="kw">async def</span> <span class="fn">__process_frame_task_handler</span>(self):
+    <span class="kw">while True</span>:
+        self.__process_current_frame = <span class="kw">None</span>
+        (frame, direction, callback) = <span class="kw">await</span> self.__process_queue.<span class="fn">get</span>()
+        self.__process_current_frame = frame                  <span class="com"># remember what's in flight</span>
+
+        <span class="kw">if</span> self.__should_block_frames <span class="kw">and</span> self.__process_event:
+            <span class="kw">await</span> self.__process_event.<span class="fn">wait</span>()
+            self.__process_event.<span class="fn">clear</span>()
+
+        <span class="kw">await</span> self.<span class="fn">__process_frame</span>(frame, direction, callback)
+        self.__process_queue.<span class="fn">task_done</span>()</pre>
+    <p class="code-caption">Two tasks per processor, and a pipeline of ~10 processors is ~20 tasks — all on the one loop. None of them ever blocks; every wait above is an `await` on a queue or an Event.</p>
+
+    <div class="diagram">
+      <div class="diagram__title">Anatomy of one processor</div>
+      <div class="diagram__caption">Frames enter the priority queue. System frames are handled inline by the input task; everything else is forwarded to the FIFO queue and the process task. Two tasks, two queues, one direction of flow shown.</div>
+      <svg viewBox="0 0 680 250" role="img" aria-label="A single FrameProcessor: priority input queue feeding an input task, which either handles system frames inline or forwards data frames to a FIFO queue drained by a process task.">
+        <!-- incoming -->
+        <text x="8" y="60" class="diag-text diag-text--dim">frames in</text>
+        <path d="M 70 55 L 110 55" class="diag-arrow" marker-end="url(#ah1)"/>
+        <!-- priority queue -->
+        <rect x="112" y="30" width="120" height="50" rx="6" class="diag-fill-surface diag-stroke-cyan" stroke-width="1.4"/>
+        <text x="172" y="52" text-anchor="middle" class="diag-text">priority queue</text>
+        <text x="172" y="68" text-anchor="middle" class="diag-text diag-text--dim">sys ▸ data</text>
+        <!-- input task -->
+        <path d="M 232 55 L 282 55" class="diag-arrow" marker-end="url(#ah1)"/>
+        <rect x="284" y="28" width="130" height="54" rx="6" class="diag-fill-surface" stroke="var(--border-bright)" stroke-width="1.2"/>
+        <text x="349" y="50" text-anchor="middle" class="diag-text">input task</text>
+        <text x="349" y="66" text-anchor="middle" class="diag-text diag-text--dim">triage</text>
+        <!-- system frame inline -->
+        <path d="M 414 45 C 480 30, 560 30, 600 55" class="diag-arrow diag-stroke-cyan" marker-end="url(#ah2)" stroke-dasharray="0"/>
+        <text x="500" y="22" text-anchor="middle" class="diag-text diag-text--label" fill="var(--cyan)">SystemFrame → handled now</text>
+        <!-- forward to fifo -->
+        <path d="M 349 82 L 349 130" class="diag-arrow" marker-end="url(#ah1)"/>
+        <text x="360" y="110" class="diag-text diag-text--dim">data / control</text>
+        <rect x="284" y="132" width="130" height="48" rx="6" class="diag-fill-surface" stroke="var(--border-bright)" stroke-width="1.2"/>
+        <text x="349" y="160" text-anchor="middle" class="diag-text">FIFO queue</text>
+        <path d="M 414 156 L 470 156" class="diag-arrow" marker-end="url(#ah1)"/>
+        <rect x="472" y="130" width="130" height="52" rx="6" class="diag-fill-surface" stroke="var(--border-bright)" stroke-width="1.2"/>
+        <text x="537" y="152" text-anchor="middle" class="diag-text">process task</text>
+        <text x="537" y="168" text-anchor="middle" class="diag-text diag-text--dim">the real work</text>
+        <path d="M 537 182 L 537 222" class="diag-arrow" marker-end="url(#ah1)"/>
+        <text x="537" y="240" text-anchor="middle" class="diag-text diag-text--dim">push_frame → next processor</text>
+        <defs>
+          <marker id="ah1" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="none" stroke="var(--text-dim)" stroke-width="1.2"/></marker>
+          <marker id="ah2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="none" stroke="var(--cyan)" stroke-width="1.2"/></marker>
+        </defs>
+      </svg>
+    </div>
+
+    <p>Why two tasks instead of one? Collapse them and you get a single loop that pulls a frame, does the work, pulls the next. Now an interruption frame arriving mid-synthesis sits in the queue behind the audio the synthesis is producing — it can't be seen until the current work finishes, which is exactly the latency you were trying to kill. Splitting "notice the signal" (input task) from "do the work" (process task) is what lets a control frame land while the slow lane is busy. The price is two tasks per processor and the discipline of never sharing mutable state between them without an <code>asyncio.Event</code> to coordinate — which is precisely what those <code>__input_event</code> / <code>__process_event</code> fields are for.</p>
+
+    <h2 id="s4"><span class="num">§4</span>The pipeline is a linked list of tasks</h2>
+
+    <p>A <code>Pipeline</code> is itself a <code>FrameProcessor</code> — a composite. It takes the list of processors you hand it and links them into a doubly-linked chain:</p>
+
+<pre class="code-block"><span class="kw">def</span> <span class="fn">_link_processors</span>(self):
+    prev = self._processors[<span class="num">0</span>]
+    <span class="kw">for</span> curr <span class="kw">in</span> self._processors[<span class="num">1</span>:]:
+        prev.<span class="fn">link</span>(curr)
+        prev = curr
+
+<span class="kw">def</span> <span class="fn">link</span>(self, processor):
+    self._next = processor
+    processor._prev = self</pre>
+    <p class="code-caption">Each processor knows its `_next` and `_prev`. That's the whole topology — a chain.</p>
+
+    <p>Frames travel in a <code>FrameDirection</code>. <code>DOWNSTREAM</code> follows <code>_next</code> (audio in → speech out); <code>UPSTREAM</code> follows <code>_prev</code> and is how a deep processor sends a signal back toward the source — an error, or the all-important "the user started talking, everyone upstream of me needs to know." <code>push_frame</code> is the one verb every processor uses, and it does nothing but enqueue onto the neighbour:</p>
+
+<pre class="code-block"><span class="kw">async def</span> <span class="fn">__internal_push_frame</span>(self, frame, direction):
+    <span class="kw">if</span> direction == <span class="ty">FrameDirection</span>.DOWNSTREAM <span class="kw">and</span> self._next:
+        <span class="kw">await</span> self._next.<span class="fn">queue_frame</span>(frame, direction)
+    <span class="kw">elif</span> direction == <span class="ty">FrameDirection</span>.UPSTREAM <span class="kw">and</span> self._prev:
+        <span class="kw">await</span> self._prev.<span class="fn">queue_frame</span>(frame, direction)</pre>
+    <p class="code-caption">`queue_frame` is `put` onto the neighbour's priority queue. So a frame's trip through the pipeline is N queue hops across N pairs of tasks — not N function calls on one stack.</p>
+
+    <p>This is the part that rewires your intuition. A frame's journey from the microphone to the model is not a call stack. There is no single coroutine that holds "the audio chunk" from top to bottom. Each hop is a hand-off: processor A's process task <code>await</code>s a put onto processor B's input queue, then loops back for its next frame; B's input task picks it up on its own schedule. The audio chunk is a baton, and the runtime is free to interleave fifty other batons between any two hops. That's what keeps the loop responsive — and it's also why you can never reason about a Pipecat bug by reading a stack trace. The causal chain lives in the queues, not the stack.</p>
+
+    <div class="stepper" id="journey">
+      <div class="stepper__title">One chunk's journey</div>
+      <div class="stepper__caption">Follow a single 20ms audio chunk through a cascade pipeline. Each step is a queue hand-off to a different pair of tasks — and a chance for the loop to run something else.</div>
+      <div class="stepper__stage" id="journey-stage"></div>
+      <div class="stepper__controls">
+        <button class="stepper__btn" id="journey-prev" disabled>‹ back</button>
+        <button class="stepper__btn" id="journey-next">next ›</button>
+        <div class="stepper__dots" id="journey-dots"></div>
+      </div>
+    </div>
+
+    <pre class="pullquote">A Pipecat bug never lives on the stack. The causal chain is in the queues — which is why a stack trace lies to you about what happened.</pre>
+
+    <h2 id="s5"><span class="num">§5</span>The cardinal sin, and the escape hatch</h2>
+
+    <p>Now the rule the whole post has been circling. <strong>Nothing in the hot path may block the event loop.</strong> Every <code>process_frame</code> is <code>async def</code>; every wait is an <code>await</code> on a queue or an <code>Event</code>; timing is <code>asyncio.sleep</code>, never <code>time.sleep</code>. The output transport's clock task, which holds each audio frame until its presentation timestamp arrives, sleeps the difference asynchronously so the loop stays free the entire time it waits.</p>
+
+    <p>But some work genuinely can't be made async, and pretending otherwise is how you get the 80&nbsp;ms stall. Voice-activity detection runs a neural net on every audio chunk. That's CPU-bound, synchronous, and runs fifty times a second. Run it inline and you've serialised the whole loop behind a model. Pipecat's answer is a thread — and exactly one thread per analyzer:</p>
+
+<pre class="code-block"><span class="com"># One thread per analyzer: a single audio stream is processed in order,</span>
+<span class="com"># so a one-worker pool gives offload without reordering.</span>
+self._executor = <span class="fn">ThreadPoolExecutor</span>(max_workers=<span class="num">1</span>)
+
+<span class="kw">async def</span> <span class="fn">analyze_audio</span>(self, buffer: <span class="ty">bytes</span>) -> <span class="ty">VADState</span>:
+    loop = asyncio.<span class="fn">get_running_loop</span>()
+    state = <span class="kw">await</span> loop.<span class="fn">run_in_executor</span>(self._executor, self._run_analyzer, buffer)
+    <span class="kw">return</span> state</pre>
+    <p class="code-caption">pipecat-core/src/pipecat/audio/vad/vad_analyzer.py — the inference runs on a worker thread; the coroutine awaits its result without blocking the loop.</p>
+
+    <p>This is where your knowledge of the GIL stops being trivia and starts being load-bearing. Offloading pure-Python CPU work to a thread buys you almost nothing — the GIL serialises it against the loop anyway, and you've added thread-switch overhead for the privilege. It works <em>here</em> because the inference call drops into ONNX/numpy/Torch, which release the GIL around their native compute. While the worker thread is down in C doing matrix multiplies, the main thread holds the GIL and the event loop keeps moving audio. The thread offload is only correct because the workload releases the lock; the same pattern around a tight pure-Python loop would be a quiet performance regression.</p>
+
+    <div class="callout callout--warn">
+      <span class="callout__label">The pattern, and its three homes</span>
+      <p>Pipecat reaches for threads in precisely the places where the work is synchronous <em>and</em> releases the GIL: VAD inference and smart-turn detection (<code>run_in_executor</code> with a one-worker pool each), and image resizing in the output transport (PIL's <code>resize</code>, also <code>ThreadPoolExecutor(max_workers=1)</code>). Image encode/decode for vision frames uses <code>asyncio.to_thread</code>. Everywhere else — the LLM call, the TTS stream, the transport socket — the work is I/O and stays as plain coroutines. If you find yourself adding a thread to a Pipecat processor, ask first whether the work releases the GIL. If it doesn't, the thread is a lie.</p>
+    </div>
+
+    <p>The <code>max_workers=1</code> is not timidity, it's correctness. One analyzer handles one audio stream, and that stream's chunks must be processed in order. A pool of N workers would let chunk 7's inference finish before chunk 5's, scrambling the VAD state machine. The single worker gives you the offload without giving up ordering — a thread pool used as a serial executor, which is a sharper tool than it first looks.</p>
+
+    <h2 id="s6"><span class="num">§6</span>Interruptions, where the design pays rent</h2>
+
+    <p>Everything above — the two tasks, the priority queue, the system-frame fast lane — exists for this section. Barge-in is the feature that justifies the architecture.</p>
+
+    <p>The bot is three seconds into a paragraph. The user says "no, wait." Here's what has to happen, and fast: VAD on the input transport detects speech and the interruption strategy decides it's a real barge-in, not a cough. A <code>StartInterruptionFrame</code> — a <em>system</em> frame — is pushed. Because it's a system frame, at every processor it lands in the high-priority tier of the input queue and is handled by the input task <em>immediately</em>, overtaking whatever TTS audio is buffered in the FIFO lane. When a processor sees it, it tears down the in-flight work:</p>
+
+<pre class="code-block"><span class="kw">async def</span> <span class="fn">_start_interruption</span>(self):
+    <span class="kw">if</span> <span class="fn">isinstance</span>(self.__process_current_frame, <span class="ty">UninterruptibleFrame</span>):
+        self.<span class="fn">__reset_process_queue</span>()        <span class="com"># keep the in-flight frame; drop the rest</span>
+    <span class="kw">else</span>:
+        <span class="kw">await</span> self.<span class="fn">__cancel_process_task</span>()       <span class="com"># cancel mid-synthesis...</span>
+        self.<span class="fn">__create_process_task</span>()           <span class="com"># ...and start a fresh, empty one</span></pre>
+    <p class="code-caption">Cancelling the process task kills the in-flight TTS synthesis or LLM stream. A brand-new process task replaces it, draining a now-empty queue.</p>
+
+    <p>The queue reset is the subtle bit. You can't just <code>clear()</code> the FIFO — some frames must survive an interruption. A <code>FunctionCallResultFrame</code>, for instance, carries the result of a tool call that already ran; drop it and the LLM's context is now inconsistent with reality. So those frames are marked <code>UninterruptibleFrame</code>, and the reset filters rather than flushes:</p>
+
+<pre class="code-block"><span class="kw">def</span> <span class="fn">__reset_process_queue</span>(self):
+    new_queue = asyncio.<span class="fn">Queue</span>()
+    <span class="kw">while not</span> self.__process_queue.<span class="fn">empty</span>():
+        item = self.__process_queue.<span class="fn">get_nowait</span>()
+        <span class="kw">if</span> <span class="fn">isinstance</span>(item, <span class="ty">UninterruptibleFrame</span>):
+            new_queue.<span class="fn">put_nowait</span>(item)        <span class="com"># survivors go back</span>
+        self.__process_queue.<span class="fn">task_done</span>()
+    <span class="com"># swap the surviving frames back in, dropping everything else</span></pre>
+    <p class="code-caption">Interruption drops the bot's queued speech but preserves context-critical frames. The conversation stays consistent even though the audio stopped mid-word.</p>
+
+    <p>Trace the timing once more and the design clicks. The whole reason the interruption frame can overtake three seconds of buffered audio is that it rode the high-priority tier into the input task, which never queued behind the process task's backlog. If interruptions and audio shared one FIFO, "stop talking" would arrive three seconds late — which is to say, after the bot finished anyway. The two-task split isn't an abstraction tax; it's the only reason barge-in feels instant.</p>
+
+    <h2 id="s7"><span class="num">§7</span>Cancellation is the hard part</h2>
+
+    <p>A voice session is a long-lived program — it can run for an hour — and a long-lived program lives or dies on its teardown. The processors above spawn tasks freely: an input task, a process task, a receive task in the TTS service, a keepalive task on the websocket. When the call ends, all of them must stop, in order, without leaking. Pipecat centralises this in a <code>TaskManager</code>, and its <code>create_task</code> wrapper encodes two hard-won lessons:</p>
+
+<pre class="code-block"><span class="kw">async def</span> <span class="fn">run_coroutine</span>():
+    <span class="kw">try</span>:
+        <span class="kw">await</span> coroutine
+    <span class="kw">except</span> asyncio.<span class="ty">CancelledError</span>:
+        logger.<span class="fn">trace</span>(<span class="str">f"{name}: task cancelled"</span>)
+        <span class="kw">raise</span>                              <span class="com"># MUST re-raise, or the cancel is swallowed</span>
+    <span class="kw">except</span> <span class="ty">Exception</span> <span class="kw">as</span> e:
+        tb = traceback.<span class="fn">extract_tb</span>(e.__traceback__)
+        logger.<span class="fn">error</span>(<span class="str">f"{name} unexpected exception ..."</span>)   <span class="com"># a crashed task logs, doesn't vanish</span>
+
+task = self._params.loop.<span class="fn">create_task</span>(<span class="fn">run_coroutine</span>())
+task.<span class="fn">set_name</span>(name)
+task.<span class="fn">add_done_callback</span>(self._task_done_handler)</pre>
+    <p class="code-caption">pipecat-core/src/pipecat/utils/asyncio/task_manager.py — every task is named and tracked. Re-raising CancelledError is non-negotiable; the bare `except Exception` ensures a task that dies on a real error leaves a log line instead of disappearing.</p>
+
+    <p>The first lesson — re-raise <code>CancelledError</code> — is the one everyone learns the hard way. asyncio cancels a task by raising <code>CancelledError</code> at its next <code>await</code>. If your handler catches it and doesn't re-raise, the runtime believes the cancellation failed, the task keeps running, and <code>await task</code> on the canceller's side hangs forever. The second lesson is the bare-<code>except</code>: an asyncio task that raises and is never awaited will swallow the exception silently, and you'll discover the dead processor only by its absence. Naming every task and routing it through one wrapper means a crash is a log line, not a mystery.</p>
+
+    <p>The cancel path mirrors this with a timeout, because a well-behaved system still has to defend against a misbehaving dependency:</p>
+
+<pre class="code-block"><span class="kw">async def</span> <span class="fn">cancel_task</span>(self, task, timeout=<span class="kw">None</span>):
+    task.<span class="fn">cancel</span>()
+    <span class="kw">try</span>:
+        <span class="kw">await</span> asyncio.<span class="fn">wait_for</span>(task, timeout=timeout) <span class="kw">if</span> timeout <span class="kw">else</span> <span class="kw">await</span> task
+    <span class="kw">except</span> asyncio.<span class="ty">TimeoutError</span>:
+        logger.<span class="fn">warning</span>(<span class="str">f"{name}: timed out waiting for task to cancel"</span>)
+    <span class="kw">except</span> asyncio.<span class="ty">CancelledError</span>:
+        <span class="kw">pass</span>                               <span class="com"># cancelled cleanly</span></pre>
+    <p class="code-caption">If a third-party library swallows the cancel and refuses to die, the timeout keeps teardown from hanging the whole session. You log it and move on.</p>
+
+    <div class="callout callout--trap">
+      <span class="callout__label">This will bite you</span>
+      <p>The leak you'll actually hit is not in Pipecat core — it's in a service that spawns its own background tasks and ties their lifetime to a <code>_disconnecting</code> flag rather than to cancellation. ElevenLabs TTS is the canonical example: it runs a <code>_receive_task</code> and a <code>_keepalive_task</code> on a websocket. If the pipeline exits without explicitly cancelling the task tree, those two keep the socket open and the TTFB timers ticking — forever. The fix is mechanical (cancel the pipeline task in a <code>finally</code>, unconditionally) but invisible until you're staring at a slowly climbing connection count. The Pantheon voice module hit exactly this; the companion post traces the fix.</p>
+    </div>
+
+    <p>This is the seam between Pipecat-the-engine and Pipecat-in-production. The engine gives you clean cancellation primitives; whether your session leaks comes down to whether <em>your</em> wrapper drives them on every exit path — normal end, timeout, exception, and outside cancellation alike. That wrapper is the entire subject of the next post.</p>
+
+    <h2 id="s8"><span class="num">§8</span>Take with you</h2>
+
+    <ul class="takeaways">
+      <li>A voice pipeline is soft real-time on one event loop. The design constraint isn't speed — it's never injecting latency variance into the loop.</li>
+      <li>Frames are categorised by scheduling priority, not content. SystemFrames exist so control signals can overtake the ordered payload they're about.</li>
+      <li>A processor is two tasks and two queues: a priority input task that lets system frames jump the line, and a FIFO process task that does the slow work. That split is what makes barge-in feel instant.</li>
+      <li>A frame's journey is N queue hops across N task pairs, not a call stack. Debug from the queues; the stack trace lies.</li>
+      <li>Threads appear in exactly three places, all GIL-releasing native compute (VAD, smart-turn, image resize), each a one-worker pool to preserve ordering. A thread around pure-Python work would be a regression.</li>
+      <li>Re-raise <code>CancelledError</code>, name every task, cancel with a timeout. Long-lived sessions die on teardown, not on throughput.</li>
+    </ul>
+
+    <div class="bridge">
+      <div class="bridge__label">Where to go next</div>
+      <div class="bridge__title"><a href="./voice-module-101.html" style="color:inherit;text-decoration:none;border-bottom:2px solid var(--cyan)">Voice Module 101 — Pipecat, wrapped for production</a></div>
+      <p>Pipecat is the engine. Pantheon's <code>platform/voice</code> is the chassis: a Temporal activity that owns one event loop for up to an hour, bridges WebRTC and a Redis pub/sub audio path into a pipeline, and answers the four questions the engine leaves open — who ends a session, who cancels the task tree, who cleans up the websockets, and how a background agent injects a frame into a live conversation. That's the companion piece.</p>
+    </div>
+
+  </section>
+</article>
+
+<script>
+  // Theme toggle
+  (function () {
+    const root = document.documentElement;
+    const btn = document.querySelector('[data-theme-toggle]');
+    const saved = localStorage.getItem('theme');
+    if (saved) root.setAttribute('data-theme', saved);
+    btn.addEventListener('click', () => {
+      const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      localStorage.setItem('theme', next);
+    });
+  })();
+
+  // Reading progress
+  (function () {
+    const bar = document.getElementById('progress');
+    const onScroll = () => {
+      const h = document.documentElement;
+      const max = h.scrollHeight - h.clientHeight;
+      bar.style.width = (max > 0 ? (h.scrollTop / max) * 100 : 0) + '%';
+    };
+    document.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+  })();
+
+  // Frame-journey stepper
+  (function () {
+    const stages = [
+      "<b>Transport input task</b> reads 640 bytes off the socket, wraps it in an <b>InputAudioRawFrame</b> (a SystemFrame), and pushes it downstream. The loop is free again before the next chunk arrives.",
+      "<b>VAD</b> runs on a worker thread via run_in_executor. The inference releases the GIL; the loop keeps moving other frames while the model decides 'is this speech?'",
+      "<b>STT service</b> streams the audio to Deepgram over a websocket. No blocking — it's I/O, so it stays a coroutine awaiting socket reads. Partial transcripts flow back as TextFrames.",
+      "<b>Context aggregator</b> accumulates the user's words into a message and, on end-of-turn, emits an LLMMessagesFrame downstream.",
+      "<b>LLM service</b> streams tokens back as LLMTextFrames. Each token is its own frame, hopping into the TTS service's queue as it arrives — pipelined, not batched.",
+      "<b>TTS service</b> turns text into TTSAudioRawFrames over its own websocket, spawning a _receive_task to read synthesis back. These frames carry a presentation timestamp.",
+      "<b>Transport output</b> clock task holds each audio frame until its pts arrives — asyncio.sleep, never blocking — then writes it to the speaker. The human hears the reply. Total trip: a few hundred ms, none of it spent blocking the loop."
+    ];
+    const stageEl = document.getElementById('journey-stage');
+    const prevBtn = document.getElementById('journey-prev');
+    const nextBtn = document.getElementById('journey-next');
+    const dotsEl = document.getElementById('journey-dots');
+    let i = 0;
+    stages.forEach(() => { const d = document.createElement('div'); d.className = 'stepper__dot'; dotsEl.appendChild(d); });
+    const dots = [...dotsEl.children];
+    function render() {
+      stageEl.innerHTML = stages[i];
+      prevBtn.disabled = i === 0;
+      nextBtn.disabled = i === stages.length - 1;
+      dots.forEach((d, k) => d.classList.toggle('on', k <= i));
+    }
+    prevBtn.addEventListener('click', () => { if (i > 0) { i--; render(); } });
+    nextBtn.addEventListener('click', () => { if (i < stages.length - 1) { i++; render(); } });
+    render();
+  })();
+</script>
+
+</body>
+</html>
