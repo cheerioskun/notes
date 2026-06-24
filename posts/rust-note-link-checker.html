@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Link Rot Patrol</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'Instrument Serif', Georgia, serif;
+    --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+  }
+
+  html[data-theme="light"] {
+    --bg: #ebe1d2;
+    --bg-tint: #dfd1bd;
+    --surface: #f7efe4;
+    --surface-2: #efe3d2;
+    --text: #1a1612;
+    --text-dim: #625447;
+    --text-muted: #897664;
+    --border: rgba(26, 22, 18, 0.14);
+    --border-strong: rgba(26, 22, 18, 0.28);
+    --accent: #d96e3c;
+    --accent-soft: rgba(217, 110, 60, 0.12);
+    --moss: #4d6554;
+    --moss-soft: rgba(77, 101, 84, 0.13);
+    --code-bg: #15110d;
+    --code-text: #f5e8d5;
+  }
+
+  html[data-theme="dark"] {
+    --bg: #17120e;
+    --bg-tint: #211913;
+    --surface: #241b15;
+    --surface-2: #2d2219;
+    --text: #f3e6d4;
+    --text-dim: #c8b7a2;
+    --text-muted: #9d8771;
+    --border: rgba(243, 230, 212, 0.13);
+    --border-strong: rgba(243, 230, 212, 0.27);
+    --accent: #f08a55;
+    --accent-soft: rgba(240, 138, 85, 0.15);
+    --moss: #9fbea7;
+    --moss-soft: rgba(159, 190, 167, 0.14);
+    --code-bg: #110d0a;
+    --code-text: #f5e8d5;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    color: var(--text);
+    background:
+      linear-gradient(90deg, rgba(26,22,18,0.035) 1px, transparent 1px) 0 0 / 72px 72px,
+      radial-gradient(circle at 22% 12%, var(--accent-soft), transparent 31rem),
+      var(--bg);
+    font-family: var(--font-body);
+    font-size: 22px;
+    line-height: 1.58;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image: radial-gradient(rgba(26,22,18,0.10) 0.6px, transparent 0.6px);
+    background-size: 5px 5px;
+    opacity: 0.18;
+    mix-blend-mode: multiply;
+  }
+
+  header.site {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    backdrop-filter: blur(18px);
+    background: color-mix(in srgb, var(--bg) 84%, transparent);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .bar {
+    max-width: 1160px;
+    margin: 0 auto;
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .brand { color: var(--text-dim); }
+  button.theme {
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--text);
+    border-radius: 999px;
+    padding: 8px 12px;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  main {
+    max-width: 1160px;
+    margin: 0 auto;
+    padding: 74px 24px 96px;
+  }
+
+  .hero {
+    border-bottom: 1px solid var(--border-strong);
+    padding-bottom: 50px;
+  }
+
+  .kicker {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 18px;
+  }
+
+  h1 {
+    font-size: clamp(58px, 9vw, 118px);
+    line-height: 0.86;
+    letter-spacing: -0.06em;
+    margin: 0;
+    max-width: 940px;
+    font-weight: 400;
+  }
+
+  .dek {
+    max-width: 760px;
+    color: var(--text-dim);
+    font-size: 30px;
+    line-height: 1.22;
+    margin: 30px 0 0;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 245px minmax(0, 760px);
+    gap: 76px;
+    align-items: start;
+    margin-top: 56px;
+  }
+
+  nav.toc {
+    position: sticky;
+    top: 76px;
+    padding: 18px 0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  nav.toc a {
+    display: grid;
+    grid-template-columns: 34px 1fr;
+    gap: 10px;
+    color: var(--text-dim);
+    text-decoration: none;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  nav.toc span { color: var(--accent); }
+  nav.toc a:hover { color: var(--text); }
+
+  article section {
+    padding: 50px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  h2 {
+    font-size: 46px;
+    line-height: 1.02;
+    letter-spacing: -0.04em;
+    font-weight: 400;
+    margin: 0 0 22px;
+  }
+
+  h3 {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin: 36px 0 12px;
+  }
+
+  p { margin: 0 0 22px; }
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 0.77em;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    padding: 0.08em 0.28em;
+    border-radius: 5px;
+  }
+
+  pre {
+    margin: 24px 0 30px;
+    padding: 20px;
+    overflow-x: auto;
+    background: var(--code-bg);
+    color: var(--code-text);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 2px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.58;
+  }
+
+  pre code {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    color: inherit;
+    font-size: inherit;
+  }
+
+  .note {
+    margin: 28px 0;
+    padding: 18px 20px;
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+  }
+
+  .note strong {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  .green {
+    background: var(--moss-soft);
+    border-left: 4px solid var(--moss);
+  }
+
+  .orange {
+    background: var(--accent-soft);
+    border-left: 4px solid var(--accent);
+  }
+
+  blockquote {
+    margin: 40px 0;
+    padding: 0 0 0 28px;
+    border-left: 2px solid var(--accent);
+    font-size: 40px;
+    line-height: 1.06;
+    letter-spacing: -0.035em;
+  }
+
+  details {
+    margin: 16px 0 24px;
+    padding: 14px 18px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+
+  summary {
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+
+  ul, ol { padding-left: 26px; }
+  li { margin: 8px 0; }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.toc { position: static; }
+  }
+</style>
+</head>
+<body>
+<header class="site">
+  <div class="bar">
+    <div class="brand">notes / rust</div>
+    <button class="theme" data-theme-toggle>toggle theme</button>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <p class="kicker">A useful small Rust program</p>
+    <h1>The link rot patrol.</h1>
+    <p class="dek">A Markdown notebook starts clean. Then files move, drafts get renamed, images disappear, and old links keep pointing at ghosts. A tiny Rust command can walk the tree and name the damage.</p>
+  </div>
+
+  <div class="layout">
+    <nav class="toc" aria-label="Table of contents">
+      <a href="#rot"><span>01</span>the rot</a>
+      <a href="#shell"><span>02</span>the shell</a>
+      <a href="#walk"><span>03</span>the walk</a>
+      <a href="#scan"><span>04</span>the scan</a>
+      <a href="#resolve"><span>05</span>the resolution</a>
+      <a href="#full"><span>06</span>the command</a>
+      <a href="#moves"><span>07</span>small improvements</a>
+    </nav>
+
+    <article>
+      <section id="rot">
+        <h2>§1 — The notebook lies quietly.</h2>
+        <p>The worst broken links are not the ones in a public site. Those fail loudly. The private ones sit in a notes folder for months. A future version of you clicks <code>[ownership notes](./ownership.md)</code> and lands nowhere.</p>
+        <p>The command should do one thing:</p>
+        <pre><code>$ mdlinks ~/repos/notes
+missing: posts/rust.md -&gt; ./ownership.md
+missing: posts/tools.md -&gt; ../images/diagram.png</code></pre>
+        <p>No server. No database. No configuration file. Just a patrol through Markdown files, looking for local targets that no longer exist.</p>
+        <blockquote>A good small command has a smell: it could have been a shell script, until the edge cases started breeding.</blockquote>
+      </section>
+
+      <section id="shell">
+        <h2>§2 — Give the command a body.</h2>
+        <p>Create a project:</p>
+        <pre><code>cargo new mdlinks
+cd mdlinks</code></pre>
+        <p>Start with the outside edge: accept a directory, default to the current one, and print what will be scanned.</p>
+        <pre><code>use std::env;
+use std::path::PathBuf;
+
+fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
+    let root = env::args()
+        .nth(1)
+        .map(PathBuf::from)
+        .unwrap_or(env::current_dir()?);
+
+    println!("scanning {}", root.display());
+    Ok(())
+}</code></pre>
+        <p><code>PathBuf</code> is the right container here because the program keeps the path. It is not merely looking at a path owned by someone else; it is taking one from the command line or constructing one from the current directory.</p>
+        <p>The return type on <code>main</code> keeps the first version clean. <code>env::current_dir()</code> can fail. The <code>?</code> passes that failure upward instead of turning the first file into a nest of <code>match</code> blocks.</p>
+      </section>
+
+      <section id="walk">
+        <h2>§3 — Walk the tree.</h2>
+        <p>The standard library gives one directory at a time. Recursion supplies the rest.</p>
+        <pre><code>use std::fs;
+use std::path::{Path, PathBuf};
+
+fn markdown_files(dir: &amp;Path, out: &amp;mut Vec&lt;PathBuf&gt;) -&gt; std::io::Result&lt;()&gt; {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            markdown_files(&amp;path, out)?;
+        } else if path
+            .extension()
+            .is_some_and(|ext| ext == "md" || ext == "markdown")
+        {
+            out.push(path);
+        }
+    }
+
+    Ok(())
+}</code></pre>
+        <p>The function borrows the directory path and borrows the output vector mutably. Every file path discovered by <code>entry.path()</code> is owned by this function. When it is a Markdown file, it gets moved into <code>out</code>.</p>
+        <div class="note green">
+          <strong>Try this</strong>
+          Skip noisy directories. Before recursing, check whether the directory name is <code>.git</code> or <code>target</code>.</div>
+        <details>
+          <summary>One compact helper</summary>
+          <pre><code>fn should_skip_dir(path: &amp;Path) -&gt; bool {
+    path.file_name()
+        .is_some_and(|name| name == ".git" || name == "target")
+}</code></pre>
+        </details>
+      </section>
+
+      <section id="scan">
+        <h2>§4 — Do not write a Markdown parser.</h2>
+        <p>Markdown is larger than it looks. This command only needs a useful slice of it: ordinary inline links shaped like <code>[label](target)</code>. A small scanner is enough.</p>
+        <pre><code>#[derive(Debug, PartialEq, Eq)]
+struct Link {
+    target: String,
+}
+
+fn links_in_line(line: &amp;str) -&gt; Vec&lt;Link&gt; {
+    let mut links = Vec::new();
+    let mut rest = line;
+
+    while let Some(open_label) = rest.find('[') {
+        rest = &amp;rest[open_label + 1..];
+
+        let Some(close_label) = rest.find("](") else { break };
+        rest = &amp;rest[close_label + 2..];
+
+        let Some(close_target) = rest.find(')') else { break };
+        let target = &amp;rest[..close_target];
+        links.push(Link { target: target.to_string() });
+        rest = &amp;rest[close_target + 1..];
+    }
+
+    links
+}</code></pre>
+        <p><code>rest</code> is a window into <code>line</code>. It keeps sliding right. The scanner borrows while searching, then stores an owned <code>String</code> for the target it found.</p>
+        <p>Put a few pins in it before wiring it to the filesystem:</p>
+        <pre><code>#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extracts_multiple_links() {
+        let links = links_in_line("see [a](./a.md) and [b](../b.md)");
+        assert_eq!(
+            links,
+            vec![
+                Link { target: "./a.md".to_string() },
+                Link { target: "../b.md".to_string() },
+            ]
+        );
+    }
+
+    #[test]
+    fn ignores_plain_text() {
+        assert!(links_in_line("nothing to see here").is_empty());
+    }
+}</code></pre>
+        <div class="note orange">
+          <strong>Known limitation</strong>
+          This scanner does not handle escaped brackets, reference-style links, images, or code spans. That is acceptable for a first pass. The command can be useful before it is complete.</div>
+      </section>
+
+      <section id="resolve">
+        <h2>§5 — A link is not a path until it has a source.</h2>
+        <p><code>./draft.md</code> means “beside the file I am in.” If the command checks every link relative to the root scan directory, it will report nonsense.</p>
+        <pre><code>fn is_local_link(target: &amp;str) -&gt; bool {
+    !(target.starts_with("http://")
+        || target.starts_with("https://")
+        || target.starts_with("mailto:")
+        || target.starts_with('#'))
+}
+
+fn strip_fragment(target: &amp;str) -&gt; &amp;str {
+    target.split_once('#').map_or(target, |(path, _fragment)| path)
+}
+
+fn resolve_link(markdown_file: &amp;Path, target: &amp;str) -&gt; Option&lt;PathBuf&gt; {
+    if !is_local_link(target) {
+        return None;
+    }
+
+    let without_fragment = strip_fragment(target);
+    if without_fragment.is_empty() {
+        return None;
+    }
+
+    let base_dir = markdown_file.parent()?;
+    Some(base_dir.join(without_fragment))
+}</code></pre>
+        <p>Web links are somebody else’s patrol. Anchor-only links point inside the current document. Fragment suffixes such as <code>#section-two</code> should not be part of the filesystem check.</p>
+        <pre><code>#[test]
+fn strips_fragments_before_checking_the_file() {
+    assert_eq!(strip_fragment("./post.md#section-2"), "./post.md");
+}
+
+#[test]
+fn ignores_web_and_anchor_links() {
+    assert!(!is_local_link("https://example.com"));
+    assert!(!is_local_link("mailto:me@example.com"));
+    assert!(!is_local_link("#local-heading"));
+    assert!(is_local_link("./neighbor.md"));
+}</code></pre>
+      </section>
+
+      <section id="full">
+        <h2>§6 — The command.</h2>
+        <p>Replace <code>src/main.rs</code> with this:</p>
+        <pre><code>use std::env;
+use std::error::Error;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, PartialEq, Eq)]
+struct Link {
+    target: String,
+}
+
+#[derive(Debug)]
+struct BrokenLink {
+    source: PathBuf,
+    target: String,
+    resolved: PathBuf,
+}
+
+fn main() -&gt; Result&lt;(), Box&lt;dyn Error&gt;&gt; {
+    let root = env::args()
+        .nth(1)
+        .map(PathBuf::from)
+        .unwrap_or(env::current_dir()?);
+
+    let mut files = Vec::new();
+    markdown_files(&amp;root, &amp;mut files)?;
+
+    let mut broken = Vec::new();
+    for file in files {
+        broken.extend(broken_links_in_file(&amp;file)?);
+    }
+
+    if broken.is_empty() {
+        println!("no missing local links found under {}", root.display());
+    } else {
+        for item in &amp;broken {
+            println!(
+                "missing: {} -&gt; {} ({})",
+                item.source.display(),
+                item.target,
+                item.resolved.display()
+            );
+        }
+        std::process::exit(1);
+    }
+
+    Ok(())
+}
+
+fn markdown_files(dir: &amp;Path, out: &amp;mut Vec&lt;PathBuf&gt;) -&gt; std::io::Result&lt;()&gt; {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            markdown_files(&amp;path, out)?;
+        } else if path
+            .extension()
+            .is_some_and(|ext| ext == "md" || ext == "markdown")
+        {
+            out.push(path);
+        }
+    }
+
+    Ok(())
+}
+
+fn broken_links_in_file(file: &amp;Path) -&gt; std::io::Result&lt;Vec&lt;BrokenLink&gt;&gt; {
+    let text = fs::read_to_string(file)?;
+    let mut broken = Vec::new();
+
+    for line in text.lines() {
+        for link in links_in_line(line) {
+            let Some(resolved) = resolve_link(file, &amp;link.target) else {
+                continue;
+            };
+
+            if !resolved.exists() {
+                broken.push(BrokenLink {
+                    source: file.to_path_buf(),
+                    target: link.target,
+                    resolved,
+                });
+            }
+        }
+    }
+
+    Ok(broken)
+}
+
+fn links_in_line(line: &amp;str) -&gt; Vec&lt;Link&gt; {
+    let mut links = Vec::new();
+    let mut rest = line;
+
+    while let Some(open_label) = rest.find('[') {
+        rest = &amp;rest[open_label + 1..];
+
+        let Some(close_label) = rest.find("](") else { break };
+        rest = &amp;rest[close_label + 2..];
+
+        let Some(close_target) = rest.find(')') else { break };
+        let target = &amp;rest[..close_target];
+        links.push(Link { target: target.to_string() });
+        rest = &amp;rest[close_target + 1..];
+    }
+
+    links
+}
+
+fn is_local_link(target: &amp;str) -&gt; bool {
+    !(target.starts_with("http://")
+        || target.starts_with("https://")
+        || target.starts_with("mailto:")
+        || target.starts_with('#'))
+}
+
+fn strip_fragment(target: &amp;str) -&gt; &amp;str {
+    target.split_once('#').map_or(target, |(path, _fragment)| path)
+}
+
+fn resolve_link(markdown_file: &amp;Path, target: &amp;str) -&gt; Option&lt;PathBuf&gt; {
+    if !is_local_link(target) {
+        return None;
+    }
+
+    let without_fragment = strip_fragment(target);
+    if without_fragment.is_empty() {
+        return None;
+    }
+
+    let base_dir = markdown_file.parent()?;
+    Some(base_dir.join(without_fragment))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extracts_multiple_links() {
+        let links = links_in_line("see [a](./a.md) and [b](../b.md)");
+        assert_eq!(
+            links,
+            vec![
+                Link { target: "./a.md".to_string() },
+                Link { target: "../b.md".to_string() },
+            ]
+        );
+    }
+
+    #[test]
+    fn ignores_plain_text() {
+        assert!(links_in_line("nothing to see here").is_empty());
+    }
+
+    #[test]
+    fn strips_fragments_before_checking_the_file() {
+        assert_eq!(strip_fragment("./post.md#section-2"), "./post.md");
+    }
+
+    #[test]
+    fn ignores_web_and_anchor_links() {
+        assert!(!is_local_link("https://example.com"));
+        assert!(!is_local_link("mailto:me@example.com"));
+        assert!(!is_local_link("#local-heading"));
+        assert!(is_local_link("./neighbor.md"));
+    }
+}</code></pre>
+        <p>Run the pins first:</p>
+        <pre><code>cargo test</code></pre>
+        <p>Then point it at a folder with Markdown in it:</p>
+        <pre><code>cargo run -- ~/repos/notes</code></pre>
+        <p>The program exits with status code <code>1</code> when it finds broken links. That makes it usable in scripts later: silence means clean, failure means investigate.</p>
+      </section>
+
+      <section id="moves">
+        <h2>§7 — Small improvements worth making.</h2>
+        <h3>Add line numbers</h3>
+        <p>Change the scan loop to keep the line index:</p>
+        <pre><code>for (index, line) in text.lines().enumerate() {
+    let line_number = index + 1;
+    // store line_number in BrokenLink
+}</code></pre>
+        <p>A report that says <code>posts/rust.md:42</code> is much nicer than one that merely names the file.</p>
+
+        <h3>Group output by file</h3>
+        <p>A flat list gets noisy. Grouping by source file makes repair work faster. Reach for a <code>HashMap&lt;PathBuf, Vec&lt;BrokenLink&gt;&gt;</code> when the report starts feeling like a ledger.</p>
+
+        <h3>Ignore code blocks</h3>
+        <p>Markdown examples often contain fake links. Track whether the scanner is between triple backticks and skip those lines. That adds one boolean and removes a whole class of false positives.</p>
+
+        <h3>Decide whether images count</h3>
+        <p>The current scanner sees <code>![alt](image.png)</code> as a link too. That may be exactly what you want. If not, check whether the character before <code>[</code> is <code>!</code>.</p>
+
+        <div class="note green">
+          <strong>The next version</strong>
+          The program is ready to become a real personal tool when it reports line numbers, skips <code>.git</code> and <code>target</code>, and ignores fenced code blocks. After that, the larger jump is replacing the tiny scanner with a Markdown parser crate.</div>
+      </section>
+    </article>
+  </div>
+</main>
+
+<script>
+  const root = document.documentElement;
+  const saved = localStorage.getItem('theme');
+  if (saved) root.dataset.theme = saved;
+  document.querySelector('[data-theme-toggle]').addEventListener('click', () => {
+    root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark';
+    localStorage.setItem('theme', root.dataset.theme);
+  });
+</script>
+</body>
+</html>

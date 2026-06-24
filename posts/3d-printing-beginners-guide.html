@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D Printing: What I Wish I Knew Before the First Print</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,650&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-body: 'Newsreader', Georgia, serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  }
+
+  html[data-theme="light"] {
+    --bg: #f0ebe1;
+    --bg-tint: #e3d9c8;
+    --surface: #fbf7ef;
+    --surface-2: #ece3d4;
+    --text: #201a15;
+    --text-dim: #62584c;
+    --text-muted: #8b7e6d;
+    --border: rgba(32, 26, 21, 0.14);
+    --border-strong: rgba(32, 26, 21, 0.30);
+    --accent: #7a2e2e;
+    --accent-2: #4a6c3c;
+    --accent-soft: rgba(122, 46, 46, 0.10);
+    --green-soft: rgba(74, 108, 60, 0.12);
+    --warn: #9b6b22;
+    --warn-soft: rgba(155, 107, 34, 0.13);
+    --code-bg: #171411;
+    --code-text: #f6ead7;
+    --shadow: 0 24px 70px rgba(54, 42, 28, 0.10);
+  }
+
+  html[data-theme="dark"] {
+    --bg: #161713;
+    --bg-tint: #202219;
+    --surface: #202118;
+    --surface-2: #28291f;
+    --text: #f2eadc;
+    --text-dim: #c8bda9;
+    --text-muted: #9a8e7b;
+    --border: rgba(242, 234, 220, 0.13);
+    --border-strong: rgba(242, 234, 220, 0.28);
+    --accent: #d47a6e;
+    --accent-2: #9fbd83;
+    --accent-soft: rgba(212, 122, 110, 0.14);
+    --green-soft: rgba(159, 189, 131, 0.13);
+    --warn: #d3a557;
+    --warn-soft: rgba(211, 165, 87, 0.15);
+    --code-bg: #0f100d;
+    --code-text: #f6ead7;
+    --shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    color: var(--text);
+    background:
+      linear-gradient(90deg, rgba(80, 62, 42, 0.045) 1px, transparent 1px) 0 0 / 80px 80px,
+      linear-gradient(rgba(80, 62, 42, 0.035) 1px, transparent 1px) 0 0 / 80px 80px,
+      radial-gradient(circle at 14% 8%, var(--green-soft), transparent 34rem),
+      radial-gradient(circle at 85% 18%, var(--accent-soft), transparent 30rem),
+      var(--bg);
+    font-family: var(--font-body);
+    font-size: 21px;
+    line-height: 1.6;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image: radial-gradient(rgba(75, 55, 35, 0.13) 0.55px, transparent 0.55px);
+    background-size: 5px 5px;
+    opacity: 0.23;
+    mix-blend-mode: multiply;
+  }
+
+  header.site {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    backdrop-filter: blur(18px);
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .site-inner {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 13px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-dim);
+  }
+
+  .brand-mark {
+    width: 30px;
+    height: 30px;
+    border: 1px solid var(--border-strong);
+    display: grid;
+    place-items: center;
+    color: var(--accent);
+    background: var(--surface);
+    box-shadow: inset 0 0 0 4px var(--bg-tint);
+  }
+
+  button.theme-toggle {
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--text);
+    padding: 9px 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  main {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 52px 24px 76px;
+  }
+
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.12fr) minmax(300px, 0.88fr);
+    gap: 42px;
+    align-items: end;
+    min-height: 520px;
+    border-bottom: 1px solid var(--border-strong);
+    padding-bottom: 46px;
+  }
+
+  .kicker, .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  h1 {
+    margin: 18px 0 22px;
+    font-size: clamp(58px, 8vw, 112px);
+    line-height: 0.88;
+    letter-spacing: -0.055em;
+    font-weight: 650;
+    max-width: 830px;
+  }
+
+  .lede {
+    max-width: 720px;
+    font-size: clamp(24px, 2.7vw, 34px);
+    line-height: 1.18;
+    color: var(--text-dim);
+    margin: 0;
+  }
+
+  .hero-card {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow);
+    padding: 20px;
+  }
+
+  .print-diagram {
+    background: var(--code-bg);
+    color: var(--code-text);
+    min-height: 360px;
+    display: grid;
+    place-items: center;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .print-diagram svg { width: 100%; height: auto; display: block; }
+  .caption {
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.5;
+    margin-top: 14px;
+  }
+
+  .toc {
+    margin: 34px 0 48px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border: 1px solid var(--border-strong);
+    background: color-mix(in srgb, var(--surface) 74%, transparent);
+  }
+
+  .toc a {
+    padding: 18px;
+    color: var(--text);
+    text-decoration: none;
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    min-height: 104px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: background 140ms ease, color 140ms ease;
+  }
+
+  .toc a:hover { background: var(--accent-soft); }
+  .toc a:nth-child(4n) { border-right: 0; }
+  .toc .num {
+    font-family: var(--font-mono);
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .toc .label { font-size: 21px; line-height: 1.05; }
+
+  section {
+    margin: 0 0 34px;
+    padding: 34px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-grid {
+    display: grid;
+    grid-template-columns: 230px minmax(0, 1fr);
+    gap: 42px;
+    align-items: start;
+  }
+
+  .section-num {
+    position: sticky;
+    top: 74px;
+    font-family: var(--font-mono);
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  h2 {
+    margin: 0 0 18px;
+    font-size: clamp(38px, 5vw, 64px);
+    line-height: 0.98;
+    letter-spacing: -0.04em;
+    font-weight: 650;
+  }
+
+  h3 {
+    margin: 26px 0 10px;
+    font-size: 30px;
+    line-height: 1.06;
+    letter-spacing: -0.025em;
+    font-weight: 650;
+  }
+
+  p { margin: 0 0 18px; }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 4px; }
+  code {
+    font-family: var(--font-mono);
+    font-size: 0.78em;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    padding: 0.12em 0.34em;
+  }
+
+  .pull {
+    margin: 30px 0;
+    padding: 24px 30px;
+    border-left: 5px solid var(--accent);
+    background: var(--surface);
+    font-size: clamp(30px, 4vw, 48px);
+    line-height: 1.05;
+    letter-spacing: -0.035em;
+    box-shadow: var(--shadow);
+  }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin: 24px 0;
+  }
+
+  .card, .callout, .resource-card {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    padding: 18px;
+  }
+
+  .card h3, .resource-card h3 { margin-top: 0; }
+  .card p, .resource-card p { color: var(--text-dim); font-size: 19px; }
+
+  .callout {
+    margin: 22px 0;
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 18px;
+    align-items: start;
+  }
+
+  .callout strong:first-child {
+    font-family: var(--font-mono);
+    color: var(--accent-2);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .callout.warn strong:first-child { color: var(--warn); }
+  .callout.warn { background: color-mix(in srgb, var(--surface) 78%, var(--warn-soft)); }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 24px 0;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    font-size: 18px;
+  }
+
+  th, td {
+    text-align: left;
+    vertical-align: top;
+    padding: 14px;
+    border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+  }
+
+  th {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: var(--surface-2);
+  }
+
+  tr:last-child td { border-bottom: 0; }
+  td:last-child, th:last-child { border-right: 0; }
+
+  .workflow {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0;
+    border: 1px solid var(--border-strong);
+    margin: 25px 0;
+    background: var(--surface);
+  }
+
+  .step {
+    padding: 18px;
+    border-right: 1px solid var(--border);
+    min-height: 172px;
+  }
+  .step:last-child { border-right: 0; }
+  .step .n { font-family: var(--font-mono); color: var(--accent); font-size: 12px; font-weight: 700; }
+  .step h3 { font-size: 25px; margin: 12px 0 8px; }
+  .step p { color: var(--text-dim); font-size: 18px; margin: 0; }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin: 22px 0;
+  }
+
+  ul, ol { padding-left: 1.1em; }
+  li { margin: 8px 0; }
+
+  .checklist {
+    counter-reset: item;
+    display: grid;
+    gap: 10px;
+    margin: 22px 0;
+  }
+
+  .check {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 14px;
+    align-items: start;
+    padding: 15px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .check input { margin-top: 8px; accent-color: var(--accent); }
+  .check span { color: var(--text-dim); font-size: 18px; display: block; }
+  .check strong { display: block; }
+
+  .resources {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+    margin: 22px 0;
+  }
+
+  .resource-card .tag {
+    font-family: var(--font-mono);
+    color: var(--accent-2);
+    font-size: 11px;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+
+  .footer-note {
+    margin-top: 44px;
+    padding: 26px;
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+  }
+
+  @media (max-width: 920px) {
+    body { font-size: 20px; }
+    .hero, .section-grid { grid-template-columns: 1fr; }
+    .section-num { position: static; }
+    .toc { grid-template-columns: repeat(2, 1fr); }
+    .toc a:nth-child(2n) { border-right: 0; }
+    .toc a:nth-child(4n) { border-right: 0; }
+    .cards, .workflow, .two-col, .resources { grid-template-columns: 1fr; }
+    .step { border-right: 0; border-bottom: 1px solid var(--border); }
+    .step:last-child { border-bottom: 0; }
+  }
+
+  @media (max-width: 560px) {
+    main { padding: 34px 16px 56px; }
+    .site-inner { padding: 12px 16px; }
+    .brand span:last-child { display: none; }
+    h1 { font-size: 54px; }
+    .toc { grid-template-columns: 1fr; }
+    .toc a { border-right: 0; }
+    .callout { grid-template-columns: 1fr; }
+    th, td { display: block; border-right: 0; }
+    th { border-bottom: 0; }
+  }
+</style>
+</head>
+<body>
+<header class="site">
+  <div class="site-inner">
+    <div class="brand"><span class="brand-mark">3D</span><span>field notes for making physical things</span></div>
+    <button class="theme-toggle" data-theme-toggle>Dark</button>
+  </div>
+</header>
+
+<main>
+  <section class="hero" id="top" aria-label="Intro">
+    <div>
+      <div class="kicker">Beginner's guide</div>
+      <h1>3D printing is not magic. It is slow sculpture with a compiler.</h1>
+      <p class="lede">A printer turns a digital model into a stack of warm plastic decisions. The good prints come less from owning a machine and more from learning where those decisions hide: orientation, tolerances, material, support, and the first layer.</p>
+    </div>
+    <aside class="hero-card" aria-label="Printer diagram">
+      <div class="print-diagram">
+        <svg viewBox="0 0 520 380" role="img" aria-label="Diagram of a simple FDM printer depositing layers">
+          <defs>
+            <linearGradient id="bed" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stop-color="#40372c"/>
+              <stop offset="1" stop-color="#1c1916"/>
+            </linearGradient>
+          </defs>
+          <rect x="54" y="298" width="412" height="30" fill="url(#bed)" stroke="#766657"/>
+          <line x1="94" y1="62" x2="94" y2="304" stroke="#8a7b65" stroke-width="8"/>
+          <line x1="426" y1="62" x2="426" y2="304" stroke="#8a7b65" stroke-width="8"/>
+          <line x1="86" y1="84" x2="434" y2="84" stroke="#8a7b65" stroke-width="8"/>
+          <rect x="218" y="52" width="84" height="64" rx="4" fill="#d47a6e" stroke="#f6d1ca"/>
+          <path d="M247 116 L273 116 L262 151 Z" fill="#f6ead7"/>
+          <path d="M162 276 C190 258 225 258 252 276 S314 294 350 274" fill="none" stroke="#9fbd83" stroke-width="12" stroke-linecap="round"/>
+          <path d="M172 250 C202 232 230 236 257 251 S314 270 344 250" fill="none" stroke="#9fbd83" stroke-width="12" stroke-linecap="round" opacity="0.78"/>
+          <path d="M190 224 C220 210 248 212 276 226 S321 239 336 224" fill="none" stroke="#9fbd83" stroke-width="12" stroke-linecap="round" opacity="0.55"/>
+          <text x="54" y="354" fill="#f6ead7" font-family="JetBrains Mono" font-size="13">model -> slicer -> hot nozzle -> layer stack</text>
+          <text x="318" y="62" fill="#d47a6e" font-family="JetBrains Mono" font-size="11">0.4 mm nozzle</text>
+          <text x="318" y="286" fill="#9fbd83" font-family="JetBrains Mono" font-size="11">visible layer lines</text>
+        </svg>
+      </div>
+      <p class="caption">Most hobby printers use FDM: a controlled nozzle melts filament and lays it down one path at a time. Think CNC hot glue, not Star Trek replicator.</p>
+    </aside>
+  </section>
+
+  <nav class="toc" aria-label="Table of contents">
+    <a href="#one"><span class="num">01</span><span class="label">What you are actually doing</span></a>
+    <a href="#workflow"><span class="num">02</span><span class="label">The practical workflow</span></a>
+    <a href="#tools"><span class="num">03</span><span class="label">Tools of the trade</span></a>
+    <a href="#models"><span class="num">04</span><span class="label">Mental models that save prints</span></a>
+    <a href="#design"><span class="num">05</span><span class="label">Design rules for a first object</span></a>
+    <a href="#materials"><span class="num">06</span><span class="label">Materials, settings, and failure modes</span></a>
+    <a href="#resources"><span class="num">07</span><span class="label">Websites, channels, and references</span></a>
+    <a href="#check"><span class="num">08</span><span class="label">Pre-print checklist</span></a>
+  </nav>
+
+  <section id="one">
+    <div class="section-grid">
+      <div class="section-num">01 / mechanism</div>
+      <div>
+        <h2>What you are actually doing</h2>
+        <p>For a first useful, good-looking print, treat 3D printing as a four-part system: <code>geometry</code>, <code>slicing</code>, <code>material</code>, and <code>machine condition</code>. A bad print is rarely just “the printer being weird.” It is usually one of those four parts leaking into the others.</p>
+        <div class="pull">The printer does not understand your object. It understands toolpaths.</div>
+        <p>The slicer is the compiler. It takes a mesh or CAD body and emits thousands of movements: where the nozzle goes, how hot it is, how fast it moves, how much plastic it pushes, and when the fan turns on. If the model has tiny details, unsupported ledges, thin walls, or impossible tolerances, the slicer will still produce instructions. They just may not produce the object in your head.</p>
+        <div class="cards">
+          <div class="card"><h3>Model</h3><p>The shape you want. Usually <code>STL</code>, <code>3MF</code>, or an exported mesh from CAD.</p></div>
+          <div class="card"><h3>Slicer</h3><p>The translation layer. PrusaSlicer, OrcaSlicer, Cura, or Bambu Studio turn shape into <code>G-code</code>.</p></div>
+          <div class="card"><h3>Print</h3><p>The physical negotiation: heat, cooling, grip, gravity, shrinkage, and layer adhesion.</p></div>
+        </div>
+        <div class="callout warn"><strong>Trap</strong><div><strong>Do not start by printing something huge.</strong> The beginner mistake is spending eight hours discovering a mistake that a twenty-minute test cube, tolerance gauge, or small fragment would have exposed.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="workflow">
+    <div class="section-grid">
+      <div class="section-num">02 / workflow</div>
+      <div>
+        <h2>The practical workflow</h2>
+        <p>Almost every successful print follows the same loop. It is not glamorous, but it is the loop that makes the hobby predictable.</p>
+        <div class="workflow">
+          <div class="step"><span class="n">01</span><h3>Choose the job</h3><p>Decorative object, functional bracket, container, miniature, lithophane, mechanism. The job determines material and design.</p></div>
+          <div class="step"><span class="n">02</span><h3>Model or remix</h3><p>Use CAD for precise objects, Blender for sculptural forms, or remix an existing model with permission.</p></div>
+          <div class="step"><span class="n">03</span><h3>Slice</h3><p>Pick orientation, supports, layer height, walls, infill, brim, temperature, and speed.</p></div>
+          <div class="step"><span class="n">04</span><h3>Print a probe</h3><p>Print the smallest piece that tests the risky bit: fit, text, overhang, surface, hinge, or wall thickness.</p></div>
+          <div class="step"><span class="n">05</span><h3>Finish</h3><p>Remove supports, sand, deburr, glue, paint, add hardware, or reprint with the lesson learned.</p></div>
+        </div>
+        <p>If you are making a thoughtful personal object, do not confuse complexity with care. A clean shape, good material choice, tuned print orientation, and a little finishing will beat an overcomplicated model with stringing and scars.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="tools">
+    <div class="section-grid">
+      <div class="section-num">03 / tools</div>
+      <div>
+        <h2>Tools of the trade</h2>
+        <p>The physical kit is smaller than it looks. The software matters more than the drawer of gadgets.</p>
+        <table>
+          <thead><tr><th>Category</th><th>Beginner picks</th><th>Why it matters</th></tr></thead>
+          <tbody>
+            <tr><td>CAD</td><td><a href="https://www.tinkercad.com/">Tinkercad</a>, <a href="https://www.onshape.com/">Onshape</a>, <a href="https://www.autodesk.com/products/fusion-360/personal">Fusion 360 Personal</a>, <a href="https://www.openscad.org/">OpenSCAD</a></td><td>CAD is for exact dimensions, holes, boxes, stands, nameplates, organizers, and mechanical parts.</td></tr>
+            <tr><td>Organic modeling</td><td><a href="https://www.blender.org/">Blender</a>, Nomad Sculpt on iPad</td><td>Use these for figurines, reliefs, ornaments, flowing shapes, and sculptural gifts.</td></tr>
+            <tr><td>Slicers</td><td><a href="https://www.prusa3d.com/page/prusaslicer_424/">PrusaSlicer</a>, <a href="https://github.com/SoftFever/OrcaSlicer">OrcaSlicer</a>, <a href="https://ultimaker.com/software/ultimaker-cura/">Cura</a>, Bambu Studio</td><td>The slicer is where prints are won: orientation, supports, walls, layer height, seam, and surface quality.</td></tr>
+            <tr><td>Measuring</td><td>Digital calipers, ruler, tolerance test model</td><td>“About right” is not a dimension. Calipers teach you what your printer actually produces.</td></tr>
+            <tr><td>Cleanup</td><td>Flush cutters, deburring tool, craft knife, needle files, sandpaper, tweezers</td><td>Supports and brims leave artifacts. Finishing turns “printed” into “made.”</td></tr>
+            <tr><td>Adhesion and maintenance</td><td>Isopropyl alcohol, lint-free cloth, glue stick for difficult beds, spare nozzles, filament dryer or dry box</td><td>The first layer and dry filament are boring until they are the whole problem.</td></tr>
+          </tbody>
+        </table>
+        <div class="callout"><strong>Model</strong><div><strong>Software split:</strong> CAD is constraint-based and dimension-driven. Blender is shape-driven. If the object needs a hole that fits a screw, use CAD. If it needs a face, creature, leaf, or flowing surface, use Blender.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="models">
+    <div class="section-grid">
+      <div class="section-num">04 / mental models</div>
+      <div>
+        <h2>Mental models that save prints</h2>
+        <div class="two-col">
+          <div class="card"><h3>Orientation is design</h3><p>The same model printed upright, sideways, or on its back can have different strength, surface quality, support scars, and print time. Orientation is not an afterthought.</p></div>
+          <div class="card"><h3>Layer lines are grain</h3><p>FDM parts are weaker between layers, like wood splitting along grain. Put force across layers when possible, not peeling them apart.</p></div>
+          <div class="card"><h3>Tolerance is a budget</h3><p>If two parts must fit, design clearance. A snug FDM slip fit often needs extra room. Test your own printer instead of trusting a universal number.</p></div>
+          <div class="card"><h3>Support is debt</h3><p>Supports let you print impossible overhangs, then charge interest as rough surfaces, waste, removal time, and occasional broken details.</p></div>
+          <div class="card"><h3>The first layer is a contract</h3><p>If the first layer does not stick, everything above it inherits the lie. Clean bed, correct Z offset, and sane speed matter.</p></div>
+          <div class="card"><h3>Plastic remembers heat</h3><p>Warping is uneven cooling. Stringing is uncontrolled oozing. Brittle parts can be bad layer bonding, wet filament, or wrong temperature.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="design">
+    <div class="section-grid">
+      <div class="section-num">05 / design</div>
+      <div>
+        <h2>Design rules for a first object</h2>
+        <p>A first designed print should be emotionally specific but mechanically simple. The best candidates are shallow reliefs, small desk objects, custom containers, key trays, display stands, ornaments, bookmarks, nameplates, lamp shades, or objects that hold a tiny physical memory: a date, a place outline, a soundwave, a coordinate, a favorite phrase set as geometry.</p>
+        <table>
+          <thead><tr><th>Rule</th><th>Beginner-safe version</th><th>Why</th></tr></thead>
+          <tbody>
+            <tr><td>Keep the base flat</td><td>Give the print a stable face that sits on the bed.</td><td>Flat bases reduce supports, warping, and first-layer drama.</td></tr>
+            <tr><td>Use thick features</td><td>Avoid hairline text, needles, tiny walls, and fragile stems.</td><td>A common 0.4 mm nozzle cannot render every detail you can draw.</td></tr>
+            <tr><td>Prefer chamfers</td><td>Use 45-degree chamfers instead of unsupported horizontal ledges.</td><td>Printers can handle slopes more easily than ceilings.</td></tr>
+            <tr><td>Prototype the risky area</td><td>Print one corner, one hinge, one letter, or one fitted hole first.</td><td>Fast local tests save full-object failures.</td></tr>
+            <tr><td>Hide the seam</td><td>Put the slicer's seam on a back edge or less visible face.</td><td>The nozzle starts and stops somewhere. Decide where the scar lives.</td></tr>
+          </tbody>
+        </table>
+        <div class="callout warn"><strong>Trap</strong><div><strong>Text is harder than it looks.</strong> Engraved text collects shadows and can fill in. Raised text catches light but can be fragile. Use bolder fonts, larger sizes, and print a small text strip before committing.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="materials">
+    <div class="section-grid">
+      <div class="section-num">06 / materials</div>
+      <div>
+        <h2>Materials, settings, and failure modes</h2>
+        <p>Start with PLA or PLA+. It is forgiving, crisp, available in beautiful colors, and good for decorative or light functional objects. PETG is tougher and more heat-resistant but stringier. TPU is flexible. ABS and ASA are useful but bring fumes, warping, and enclosure requirements.</p>
+        <table>
+          <thead><tr><th>Material</th><th>Use when</th><th>Beginner note</th></tr></thead>
+          <tbody>
+            <tr><td>PLA / PLA+</td><td>Decor, prototypes, toys, display pieces, containers away from heat</td><td>Best first material. Not for hot cars or high heat.</td></tr>
+            <tr><td>PETG</td><td>Tougher brackets, outdoor-ish use, parts needing more flex</td><td>Can string and blob. Dry filament helps.</td></tr>
+            <tr><td>TPU</td><td>Flexible feet, grips, bumpers, cases</td><td>Print slower. Direct-drive extruders handle it better.</td></tr>
+            <tr><td>ABS / ASA</td><td>Heat resistance, automotive-ish parts, outdoor parts</td><td>Needs ventilation and usually an enclosure. Not a first-week material.</td></tr>
+          </tbody>
+        </table>
+        <h3>Settings worth understanding early</h3>
+        <ul>
+          <li><strong>Layer height:</strong> lower is smoother and slower. Higher is faster and more visibly layered.</li>
+          <li><strong>Walls/perimeters:</strong> more walls often make parts stronger than simply adding infill.</li>
+          <li><strong>Infill:</strong> internal lattice. Many decorative parts do not need much.</li>
+          <li><strong>Temperature:</strong> affects flow, gloss, stringing, and layer bonding.</li>
+          <li><strong>Cooling:</strong> helps overhangs and details, but too much can weaken bonding for some materials.</li>
+          <li><strong>Supports:</strong> use as little as the geometry permits. Tree/organic supports can reduce scarring on some shapes.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="resources">
+    <div class="section-grid">
+      <div class="section-num">07 / resources</div>
+      <div>
+        <h2>Websites, channels, and references</h2>
+        <p>Good resources split into three worlds: model libraries, troubleshooting references, and people who test rather than vibe.</p>
+        <div class="resources">
+          <div class="resource-card"><span class="tag">Models</span><h3><a href="https://www.printables.com/">Printables</a></h3><p>Clean community library, strong remix culture, good for practical and decorative files.</p></div>
+          <div class="resource-card"><span class="tag">Models</span><h3><a href="https://makerworld.com/">MakerWorld</a></h3><p>Large modern catalog, especially convenient if you use Bambu printers.</p></div>
+          <div class="resource-card"><span class="tag">Search</span><h3><a href="https://thangs.com/">Thangs</a> and <a href="https://www.yeggi.com/">Yeggi</a></h3><p>Search engines for 3D models. Useful when you know the object but not the platform.</p></div>
+          <div class="resource-card"><span class="tag">CAD references</span><h3><a href="https://www.mcmaster.com/">McMaster-Carr</a></h3><p>Great for hardware dimensions and downloadable CAD models for screws, inserts, hinges, and brackets.</p></div>
+          <div class="resource-card"><span class="tag">Troubleshooting</span><h3><a href="https://help.prusa3d.com/">Prusa Knowledge Base</a></h3><p>Clear articles on first layers, materials, slicer settings, and maintenance.</p></div>
+          <div class="resource-card"><span class="tag">Calibration</span><h3><a href="https://ellis3dp.com/Print-Tuning-Guide/">Ellis' Print Tuning Guide</a></h3><p>More advanced, but excellent once you want to tune extrusion, pressure advance, and speed seriously.</p></div>
+          <div class="resource-card"><span class="tag">YouTube</span><h3>CNC Kitchen</h3><p>Material testing, strength experiments, thermal behavior, and practical engineering questions.</p></div>
+          <div class="resource-card"><span class="tag">YouTube</span><h3>Maker's Muse</h3><p>Design-for-printing instincts, clever mechanisms, and approachable project thinking.</p></div>
+          <div class="resource-card"><span class="tag">YouTube</span><h3>Teaching Tech</h3><p>Calibration, printer setup, firmware, upgrades, and methodical troubleshooting.</p></div>
+          <div class="resource-card"><span class="tag">YouTube</span><h3>Thomas Sanladerer</h3><p>Printer reviews, process explanations, material basics, and honest hobby context.</p></div>
+        </div>
+        <div class="callout"><strong>Search</strong><div><strong>Use search phrases that include the manufacturing constraint:</strong> “support-free,” “print in place,” “0.4 nozzle,” “PLA,” “parametric,” “remix,” “STEP file,” “no supports.” These terms find files made by people who understand printing, not just 3D art.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="check">
+    <div class="section-grid">
+      <div class="section-num">08 / checklist</div>
+      <div>
+        <h2>Pre-print checklist</h2>
+        <p>Run this before the “real” print, especially if the object has personal stakes.</p>
+        <div class="checklist">
+          <label class="check"><input type="checkbox"><span><strong>Can the object sit on the bed without drama?</strong> Flat base, sensible orientation, minimal supports, no delicate first-layer islands.</span></label>
+          <label class="check"><input type="checkbox"><span><strong>Did I print a tiny test of the risky feature?</strong> Text, snap fit, hinge, hole, surface texture, overhang, or small detail.</span></label>
+          <label class="check"><input type="checkbox"><span><strong>Are the visible faces oriented intentionally?</strong> The prettiest face may need to point up, not sideways.</span></label>
+          <label class="check"><input type="checkbox"><span><strong>Do fitted parts have clearance?</strong> Holes, lids, inserts, magnets, bearings, and pegs need room for real plastic.</span></label>
+          <label class="check"><input type="checkbox"><span><strong>Is the filament dry and the bed clean?</strong> If the print is important, remove boring variables first.</span></label>
+          <label class="check"><input type="checkbox"><span><strong>Do I have a finishing plan?</strong> Support removal, sanding, primer, paint, glue, magnets, hardware, or felt pads.</span></label>
+        </div>
+        <h3>Things to take with you</h3>
+        <ul>
+          <li>The slicer is the compiler; learn to read its preview.</li>
+          <li>Orientation changes strength, scars, time, and beauty.</li>
+          <li>Supports are useful, but every support is a future cleanup job.</li>
+          <li>Calipers and test pieces beat hope.</li>
+          <li>Finish the object. The last ten percent is where it stops looking like a printer demo.</li>
+        </ul>
+        <div class="footer-note">
+          <strong>Next bridge:</strong> pick one small object, model it twice, and print only the riskiest corner first. The first version teaches dimensions. The second version teaches taste.
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+  const root = document.documentElement;
+  const button = document.querySelector('[data-theme-toggle]');
+  const saved = localStorage.getItem('theme-3d-printing');
+  if (saved) root.dataset.theme = saved;
+  button.textContent = root.dataset.theme === 'dark' ? 'Light' : 'Dark';
+  button.addEventListener('click', () => {
+    const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+    root.dataset.theme = next;
+    localStorage.setItem('theme-3d-printing', next);
+    button.textContent = next === 'dark' ? 'Light' : 'Dark';
+  });
+</script>
+</body>
+</html>

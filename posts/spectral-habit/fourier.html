@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fourier: When Waves Are The Right Coordinates</title>
+<style>
+  :root {
+    --font-body: Georgia, "Times New Roman", serif;
+    --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  }
+
+  html[data-theme="light"] {
+    --bg: #f6f1e8;
+    --surface: #fffaf1;
+    --surface-soft: #eee4d2;
+    --border: rgba(49, 41, 30, 0.16);
+    --border-strong: rgba(49, 41, 30, 0.32);
+    --text: #31291e;
+    --text-bright: #17120c;
+    --text-dim: #665845;
+    --text-muted: #8d7b61;
+    --accent: #a2472b;
+    --accent-soft: rgba(162, 71, 43, 0.12);
+    --blue: #305f8f;
+    --blue-soft: rgba(48, 95, 143, 0.12);
+    --green: #4e6d43;
+    --green-soft: rgba(78, 109, 67, 0.14);
+    --gold: #9b741f;
+    --shadow: rgba(31, 23, 12, 0.08);
+  }
+
+  html[data-theme="dark"] {
+    --bg: #11140f;
+    --surface: #191d16;
+    --surface-soft: #0d100b;
+    --border: rgba(236, 225, 204, 0.13);
+    --border-strong: rgba(236, 225, 204, 0.28);
+    --text: #e4dac8;
+    --text-bright: #fff6e6;
+    --text-dim: #b8a98e;
+    --text-muted: #887960;
+    --accent: #e07855;
+    --accent-soft: rgba(224, 120, 85, 0.14);
+    --blue: #82addf;
+    --blue-soft: rgba(130, 173, 223, 0.13);
+    --green: #9ab977;
+    --green-soft: rgba(154, 185, 119, 0.13);
+    --gold: #dbb45c;
+    --shadow: rgba(0, 0, 0, 0.2);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background:
+      linear-gradient(90deg, var(--border) 1px, transparent 1px),
+      linear-gradient(var(--border) 1px, transparent 1px),
+      var(--bg);
+    background-size: 40px 40px;
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 20px;
+    line-height: 1.66;
+    -webkit-font-smoothing: antialiased;
+    overflow-wrap: break-word;
+  }
+
+  body * { min-width: 0; }
+
+  .progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--blue), var(--green));
+    z-index: 20;
+  }
+
+  .site-header {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 18px 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border-strong);
+  }
+
+  .site-header a,
+  .site-header__title {
+    color: var(--text-muted);
+    text-decoration: none;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .site-header a:hover { color: var(--accent); }
+
+  .theme-toggle {
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 1px;
+    padding: 7px 13px;
+  }
+
+  .theme-toggle:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .page {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 64px 32px 120px;
+    background: color-mix(in srgb, var(--bg) 90%, transparent);
+  }
+
+  .hero {
+    padding-bottom: 38px;
+    margin-bottom: 42px;
+    border-bottom: 1px solid var(--border-strong);
+  }
+
+  .eyebrow {
+    margin: 0 0 18px;
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  h1 {
+    margin: 0 0 18px;
+    color: var(--text-bright);
+    font-size: clamp(42px, 7vw, 68px);
+    font-weight: 600;
+    letter-spacing: 0;
+    line-height: 1;
+    text-wrap: balance;
+  }
+
+  .subtitle {
+    max-width: 650px;
+    margin: 0 0 28px;
+    color: var(--text-dim);
+    font-size: 24px;
+    font-style: italic;
+    line-height: 1.4;
+  }
+
+  .meta {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  .lead {
+    color: var(--text-bright);
+    font-size: 24px;
+    line-height: 1.5;
+    margin: 0 0 34px;
+  }
+
+  .toc {
+    margin: 0 0 48px;
+    padding: 22px 26px;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--surface-soft);
+  }
+
+  .toc__label {
+    margin-bottom: 12px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .toc ol {
+    list-style: none;
+    counter-reset: toc;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 28px;
+  }
+
+  .toc li { counter-increment: toc; }
+
+  .toc a {
+    display: flex;
+    gap: 12px;
+    color: var(--text-dim);
+    text-decoration: none;
+    font-size: 16px;
+    line-height: 1.35;
+  }
+
+  .toc a::before {
+    content: counter(toc, decimal-leading-zero);
+    flex: 0 0 26px;
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .toc a:hover { color: var(--accent); }
+
+  p { margin: 0 0 1.28em; }
+  strong { color: var(--text-bright); font-weight: 700; }
+  em { color: var(--text-bright); }
+
+  h2 {
+    margin: 64px 0 12px;
+    color: var(--text-bright);
+    font-size: 34px;
+    font-weight: 600;
+    line-height: 1.15;
+    text-wrap: balance;
+    scroll-margin-top: 24px;
+  }
+
+  h2 .num {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+  }
+
+  h3 {
+    margin: 34px 0 12px;
+    color: var(--text-bright);
+    font-size: 24px;
+    font-weight: 600;
+    line-height: 1.25;
+  }
+
+  .math {
+    margin: 24px 0 28px;
+    padding: 18px 20px;
+    border-left: 3px solid var(--accent);
+    background: var(--accent-soft);
+    color: var(--text-bright);
+    font-family: var(--font-mono);
+    font-size: 15px;
+    line-height: 1.7;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .callout {
+    margin: 30px 0;
+    padding: 20px 22px;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--surface);
+    box-shadow: 0 16px 40px var(--shadow);
+  }
+
+  .callout__label {
+    margin-bottom: 8px;
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+  }
+
+  .callout p:last-child { margin-bottom: 0; }
+
+  .playground {
+    margin: 34px 0 40px;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--surface);
+    box-shadow: 0 18px 48px var(--shadow);
+    overflow: hidden;
+  }
+
+  .playground__header {
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    align-items: baseline;
+  }
+
+  .playground__title {
+    color: var(--text-bright);
+    font-size: 22px;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+
+  .playground__note {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.4;
+    text-align: right;
+  }
+
+  .canvas-wrap {
+    padding: 18px 20px 8px;
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface-soft);
+  }
+
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px 22px;
+    padding: 18px 20px 22px;
+  }
+
+  .control {
+    display: grid;
+    gap: 7px;
+  }
+
+  .control label {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .control output { color: var(--accent); }
+
+  input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent);
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 18px;
+    padding: 0 20px 18px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+
+  .legend span::before {
+    content: "";
+    display: inline-block;
+    width: 22px;
+    height: 3px;
+    margin-right: 7px;
+    vertical-align: middle;
+    background: var(--legend-color);
+  }
+
+  .code-block {
+    margin: 26px 0 32px;
+    padding: 18px 20px;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--surface-soft);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.65;
+    overflow-x: auto;
+    white-space: pre;
+  }
+
+  code {
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: var(--blue-soft);
+    color: var(--blue);
+    font-family: var(--font-mono);
+    font-size: 0.82em;
+  }
+
+  .code-block code {
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    font-size: inherit;
+  }
+
+  .next {
+    margin-top: 72px;
+    padding-top: 28px;
+    border-top: 1px solid var(--border-strong);
+    color: var(--text-dim);
+    font-style: italic;
+  }
+
+  @media (max-width: 680px) {
+    body { font-size: 18px; }
+    .site-header { padding: 16px 20px; }
+    .page { padding: 46px 20px 90px; }
+    .subtitle,
+    .lead { font-size: 21px; }
+    .toc ol,
+    .controls { grid-template-columns: 1fr; }
+    .playground__header { display: block; }
+    .playground__note { margin-top: 8px; text-align: left; }
+  }
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<header class="site-header">
+  <a href="../index.html">notes</a>
+  <button class="theme-toggle" id="themeToggle" type="button">Dark</button>
+</header>
+
+<main class="page">
+  <header class="hero">
+    <p class="eyebrow">The Spectral Habit · Part 1</p>
+    <h1>Fourier: When Waves Are The Right Coordinates</h1>
+    <p class="subtitle">The Fourier transform is not a machine for making graphs spiky. It is a way to describe a signal by the simple patterns that survive shifting.</p>
+    <div class="meta">
+      <span>Transform View</span>
+      <span>Fourier</span>
+      <span>Interactive</span>
+    </div>
+  </header>
+
+  <nav class="toc" aria-label="Table of contents">
+    <div class="toc__label">In this piece</div>
+    <ol>
+      <li><a href="#mixture">A signal is a mixture</a></li>
+      <li><a href="#waves">Why waves are special</a></li>
+      <li><a href="#transform">What the transform asks</a></li>
+      <li><a href="#play">A small playground</a></li>
+      <li><a href="#convolution">The trick with convolution</a></li>
+      <li><a href="#code">The code version</a></li>
+      <li><a href="#carry">What to carry forward</a></li>
+    </ol>
+  </nav>
+
+  <p class="lead">A signal drawn over time looks like a sequence of values: high here, low there, flat for a while, sharp in the middle. That view is honest, but it is not always the view in which the signal is easiest to understand.</p>
+
+  <section id="mixture">
+    <h2><span class="num">01</span>A signal is a hard way to see a mixture</h2>
+    <p>Imagine hearing a chord on a piano. The pressure wave that reaches your ear is one wiggling curve. If you only stare at that curve, the chord is tangled: every instant contains the combined effect of several notes.</p>
+    <p>Your ear does not experience the chord as an arbitrary wiggle. It hears pitches. It hears that some notes are loud, some are soft, and some are missing. The Fourier view formalizes that move. It asks for the ingredients that make the wiggle, not just the values the wiggle takes.</p>
+    <p>This is already the central habit. The original coordinates say <em>what is the signal doing at each time?</em> Fourier coordinates say <em>how much of each frequency is present?</em></p>
+  </section>
+
+  <section id="waves">
+    <h2><span class="num">02</span>Why waves are special</h2>
+    <p>Fourier uses sine and cosine waves because they behave cleanly under shifting, differentiation, and many physical systems. If you shift a sine wave, it is still the same frequency. If you differentiate it, it is still a wave of the same frequency. If you pass it through many linear filters, it does not turn into five other frequencies; it usually comes out scaled and delayed.</p>
+    <p>That makes waves good coordinates. They are not good because nature secretly draws everything with perfect sinusoids. They are good because many operations treat each sinusoid independently.</p>
+    <div class="callout">
+      <div class="callout__label">The useful sentence</div>
+      <p>A Fourier transform is useful when the operation you care about mixes time samples together but treats frequencies separately.</p>
+    </div>
+  </section>
+
+  <section id="transform">
+    <h2><span class="num">03</span>What the transform asks</h2>
+    <p>For a continuous signal, the Fourier transform compares the signal against every possible frequency. For each frequency, it asks: if I line up a wave of this frequency against the signal, how much agreement is there?</p>
+    <p>The formal version looks compact:</p>
+    <div class="math">X(f) = ∫ x(t) e<sup>-2πift</sup> dt</div>
+    <p>The exponential is a rotating wave. The integral is a long accumulation of agreement. If the signal contains that frequency, the rotations line up often enough to leave a large value. If it does not, the positive and negative parts mostly cancel.</p>
+    <p>The transform is therefore not a decoration placed on top of the signal. It is a change of coordinates. The same object is being described in a basis made from waves.</p>
+  </section>
+
+  <section id="play">
+    <h2><span class="num">04</span>A small playground</h2>
+    <p>The fastest way to make Fourier less mystical is to build a signal out of a few waves and then remove some of them. The top plot below is the time-domain signal. The bars show the three frequencies that created it. The pale line is what remains after a low-pass filter keeps only frequencies at or below the cutoff.</p>
+
+    <div class="playground" aria-label="Fourier playground">
+      <div class="playground__header">
+        <div class="playground__title">Build a signal from waves</div>
+        <div class="playground__note">The filter keeps low frequencies first.</div>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="signalCanvas" width="1200" height="520"></canvas>
+      </div>
+      <div class="legend">
+        <span style="--legend-color: var(--accent)">signal</span>
+        <span style="--legend-color: var(--blue)">filtered</span>
+        <span style="--legend-color: var(--green)">spectrum</span>
+      </div>
+      <div class="controls">
+        <div class="control">
+          <label for="amp1">Slow wave <output id="amp1Out">1.0</output></label>
+          <input id="amp1" type="range" min="0" max="1.8" step="0.1" value="1.0">
+        </div>
+        <div class="control">
+          <label for="amp2">Middle wave <output id="amp2Out">0.6</output></label>
+          <input id="amp2" type="range" min="0" max="1.8" step="0.1" value="0.6">
+        </div>
+        <div class="control">
+          <label for="amp3">Fast wave <output id="amp3Out">0.3</output></label>
+          <input id="amp3" type="range" min="0" max="1.8" step="0.1" value="0.3">
+        </div>
+        <div class="control">
+          <label for="cutoff">Low-pass cutoff <output id="cutoffOut">2</output></label>
+          <input id="cutoff" type="range" min="1" max="3" step="1" value="2">
+        </div>
+      </div>
+    </div>
+
+    <p>When the cutoff is low, the sharp little ripples disappear first. That is not because they are less real. It is because they live in high-frequency coordinates. Filtering becomes a choice about which coordinates to keep.</p>
+  </section>
+
+  <section id="convolution">
+    <h2><span class="num">05</span>The trick with convolution</h2>
+    <p>The Fourier transform becomes indispensable when a problem contains convolution. Convolution is what happens when an output value is formed by blending many neighboring input values. Blurring an image, smoothing a signal, and passing audio through a simple linear system are all convolution-shaped operations.</p>
+    <p>In the original view, convolution is spread out: each output sample depends on a neighborhood of input samples. In the Fourier view, the same operation becomes pointwise multiplication. Each frequency is scaled by the filter's response at that frequency.</p>
+    <div class="math">time domain: y = x * h<br>frequency domain: Y(f) = X(f) H(f)</div>
+    <p>This is the first big reason the transform view matters. It turns a mixing operation into an independent-coordinate operation. The signal did not become simpler in some moral sense. It became simpler relative to the operation we wanted to perform.</p>
+  </section>
+
+  <section id="code">
+    <h2><span class="num">06</span>The code version</h2>
+    <p>In code, the finite version is the discrete Fourier transform. You usually call a fast implementation, but the story is the same: convert samples into frequency coordinates, edit those coordinates, then come back.</p>
+    <pre class="code-block"><code>import numpy as np
+
+n = 512
+t = np.linspace(0, 1, n, endpoint=False)
+
+signal = (
+    1.0 * np.sin(2 * np.pi * 3 * t) +
+    0.6 * np.sin(2 * np.pi * 13 * t) +
+    0.3 * np.sin(2 * np.pi * 40 * t)
+)
+
+spectrum = np.fft.rfft(signal)
+freqs = np.fft.rfftfreq(n, d=1 / n)
+
+keep = freqs <= 15
+filtered_spectrum = spectrum * keep
+filtered = np.fft.irfft(filtered_spectrum, n=n)</code></pre>
+    <p>The important line is not the FFT call. It is <code>spectrum * keep</code>. The filter is easy because the transform chose coordinates where frequency components can be kept, shrunk, or removed independently.</p>
+  </section>
+
+  <section id="carry">
+    <h2><span class="num">07</span>What to carry forward</h2>
+    <p>Fourier is often taught as a formula before it is taught as a habit. The habit is simpler: when the time-domain description makes the problem feel tangled, ask whether waves are the coordinates that make the operation clean.</p>
+    <p>This does not mean every transform is secretly Fourier. DCT changes the boundary story: finite data often behaves better when it is reflected instead of repeated. Laplace changes the time story: systems with decay, growth, and initial conditions need more than pure frequency.</p>
+    <p>But the question will return. What are the simple behaviors here? What coordinates does the operation treat independently? Fourier's answer is waves. The rest of the series is about learning when another answer is better.</p>
+  </section>
+
+  <p class="next">Next in the series: DCT, where the world is finite, edges matter, and cosine tiles become the natural language of an image block.</p>
+</main>
+
+<script>
+  const root = document.documentElement;
+  const themeToggle = document.getElementById("themeToggle");
+  const savedTheme = localStorage.getItem("spectral-theme");
+  if (savedTheme) {
+    root.dataset.theme = savedTheme;
+    themeToggle.textContent = savedTheme === "dark" ? "Light" : "Dark";
+  }
+
+  themeToggle.addEventListener("click", () => {
+    const next = root.dataset.theme === "dark" ? "light" : "dark";
+    root.dataset.theme = next;
+    localStorage.setItem("spectral-theme", next);
+    themeToggle.textContent = next === "dark" ? "Light" : "Dark";
+    draw();
+  });
+
+  const progress = document.getElementById("progress");
+  window.addEventListener("scroll", () => {
+    const max = document.documentElement.scrollHeight - window.innerHeight;
+    const pct = max > 0 ? (window.scrollY / max) * 100 : 0;
+    progress.style.width = pct + "%";
+  }, { passive: true });
+
+  const canvas = document.getElementById("signalCanvas");
+  const ctx = canvas.getContext("2d");
+  const controls = {
+    amp1: document.getElementById("amp1"),
+    amp2: document.getElementById("amp2"),
+    amp3: document.getElementById("amp3"),
+    cutoff: document.getElementById("cutoff")
+  };
+  const outputs = {
+    amp1: document.getElementById("amp1Out"),
+    amp2: document.getElementById("amp2Out"),
+    amp3: document.getElementById("amp3Out"),
+    cutoff: document.getElementById("cutoffOut")
+  };
+  const waves = [
+    { key: "amp1", freq: 1 },
+    { key: "amp2", freq: 3 },
+    { key: "amp3", freq: 8 }
+  ];
+
+  function cssVar(name) {
+    return getComputedStyle(root).getPropertyValue(name).trim();
+  }
+
+  function values() {
+    return {
+      amp1: Number(controls.amp1.value),
+      amp2: Number(controls.amp2.value),
+      amp3: Number(controls.amp3.value),
+      cutoff: Number(controls.cutoff.value)
+    };
+  }
+
+  function sample(x, vals, cutoff = Infinity) {
+    return waves.reduce((sum, wave, index) => {
+      if (index + 1 > cutoff) return sum;
+      return sum + vals[wave.key] * Math.sin(2 * Math.PI * wave.freq * x);
+    }, 0);
+  }
+
+  function drawAxes(plot) {
+    ctx.strokeStyle = cssVar("--border-strong");
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(plot.x, plot.mid);
+    ctx.lineTo(plot.x + plot.w, plot.mid);
+    ctx.stroke();
+
+    ctx.fillStyle = cssVar("--text-muted");
+    ctx.font = "22px " + cssVar("--font-mono");
+    ctx.fillText("time-domain signal", plot.x, plot.y + 28);
+  }
+
+  function drawSignal(vals) {
+    const plot = { x: 58, y: 42, w: 1080, h: 250 };
+    plot.mid = plot.y + plot.h / 2;
+    drawAxes(plot);
+
+    const maxAmp = Math.max(1.2, vals.amp1 + vals.amp2 + vals.amp3);
+    const scale = (plot.h * 0.42) / maxAmp;
+
+    function trace(color, cutoff, width, alpha) {
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = alpha;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      for (let i = 0; i <= plot.w; i++) {
+        const x = i / plot.w;
+        const y = plot.mid - sample(x, vals, cutoff) * scale;
+        if (i === 0) ctx.moveTo(plot.x + i, y);
+        else ctx.lineTo(plot.x + i, y);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    trace(cssVar("--blue"), vals.cutoff, 5, 0.42);
+    trace(cssVar("--accent"), Infinity, 3, 1);
+  }
+
+  function drawSpectrum(vals) {
+    const baseX = 130;
+    const baseY = 440;
+    const barW = 130;
+    const gap = 150;
+    const maxH = 96;
+    const amps = [vals.amp1, vals.amp2, vals.amp3];
+    const maxAmp = Math.max(1.8, ...amps);
+
+    ctx.fillStyle = cssVar("--text-muted");
+    ctx.font = "22px " + cssVar("--font-mono");
+    ctx.fillText("frequency coordinates", 58, 340);
+
+    ctx.strokeStyle = cssVar("--border-strong");
+    ctx.beginPath();
+    ctx.moveTo(58, baseY);
+    ctx.lineTo(1140, baseY);
+    ctx.stroke();
+
+    amps.forEach((amp, i) => {
+      const x = baseX + i * gap;
+      const h = (amp / maxAmp) * maxH;
+      const kept = i + 1 <= vals.cutoff;
+      ctx.fillStyle = kept ? cssVar("--green") : cssVar("--text-muted");
+      ctx.globalAlpha = kept ? 0.95 : 0.38;
+      ctx.fillRect(x, baseY - h, barW, h);
+      ctx.globalAlpha = 1;
+
+      ctx.fillStyle = cssVar("--text-dim");
+      ctx.font = "20px " + cssVar("--font-mono");
+      ctx.fillText("f" + (i + 1), x + 50, baseY + 34);
+      ctx.fillStyle = cssVar("--text-muted");
+      ctx.font = "17px " + cssVar("--font-mono");
+      ctx.fillText(kept ? "kept" : "cut", x + 41, baseY + 60);
+    });
+  }
+
+  function draw() {
+    const vals = values();
+    Object.keys(outputs).forEach((key) => {
+      outputs[key].textContent = key === "cutoff" ? vals[key] : vals[key].toFixed(1);
+    });
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = cssVar("--surface-soft");
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    drawSignal(vals);
+    drawSpectrum(vals);
+  }
+
+  Object.values(controls).forEach((control) => {
+    control.addEventListener("input", draw);
+  });
+
+  draw();
+</script>
+</body>
+</html>
