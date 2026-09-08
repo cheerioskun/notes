@@ -3,8 +3,8 @@
     "date": "2026-09-08",
     "title": "What converges in AIMD?",
     "course": "Computer Networks",
-    "minutes": 10,
+    "minutes": 18,
     "file": "2026-09-08-aimd-convergence.html",
-    "summary": "The gap between two flows can vanish while their total window keeps oscillating. Follow the two quantities separately."
+    "summary": "Follow two senders from unequal windows to fair sharing: a worked feedback cycle, linked plots, and the distinction between convergence and continuing motion."
   }
 ]
