@@ -1,0 +1,13 @@
+# Morning archive authoring
+
+Scope: this directory and its descendants. Preserve the surrounding notes site and existing URLs. All repository content and Git history are public.
+
+- Commit only standalone lessons and public metadata. Never include private transcripts, learner assessments, private course slides, account details, or personalized diagnostic notes anywhere in this repository.
+- Lessons are hosted on Cloudflare Pages and may use JavaScript freely where it improves teaching: simulations, plots, controls, and dynamically rendered equations are allowed. Do not constrain hosted lessons to the ChatGPT iPhone artifact renderer. Use viewport metadata, body text at least 16px, responsive layout, and usable touch controls.
+- Prefer portable HTML with colocated assets and a working initial state. Use the libraries and interaction complexity the explanation needs; there is no blanket inline-only, small-JavaScript, or no-JavaScript-fallback requirement. Keep loading and errors intelligible.
+- Prefer one focused mechanism, a worked case, and a changed assumption. Cite primary technical sources. Distinguish simulations, illustrative output, and measured command output.
+- Keep titles, dates, estimated duration, filenames, and summaries consistent between catalog.json and index.html. Filenames use YYYY-MM-DD-topic.html. Preserve dated URLs; revisions use Git history.
+- Add a link to index.html from each lesson. The archive index links to ../index.html for all notes. Preserve existing index entries.
+- Read the latest branch head before editing. Validate changed local links, inline JavaScript syntax, and one meaningful model case. Commit article, catalog, and index changes atomically. Never force-push or overwrite concurrent changes.
+- A successful commit does not prove successful hosting. Verify the live page or deployment status before claiming it is live.
+- Scheduling and learner evidence are maintained privately. Do not invent learner answers, topic pacing, or evidence of retention. When the private state is unavailable, report that limitation rather than reconstructing personal details into this public repository.

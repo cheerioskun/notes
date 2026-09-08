@@ -1,0 +1,10 @@
+[
+  {
+    "date": "2026-09-08",
+    "title": "What converges in AIMD?",
+    "course": "Computer Networks",
+    "minutes": 10,
+    "file": "2026-09-08-aimd-convergence.html",
+    "summary": "The gap between two flows can vanish while their total window keeps oscillating. Follow the two quantities separately."
+  }
+]

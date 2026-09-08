@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>What converges in AIMD?</title>
+<style>
+:root{color-scheme:light dark;--bg:#f7fafc;--ink:#182a39;--muted:#4f6171;--rule:#c9d5df;--accent:#155a85;--panel:#eaf1f6}
+@media(prefers-color-scheme:dark){:root{--bg:#101c28;--ink:#e5edf3;--muted:#b4c4d1;--rule:#364b5e;--accent:#85cafa;--panel:#1a2c3c}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:1.125rem/1.75 Georgia,serif}main{max-width:46rem;margin:auto;padding:2rem 1.25rem 5rem}header{padding-bottom:1.5rem;border-bottom:3px solid var(--ink)}h1{font-size:clamp(2.2rem,7.5vw,3.5rem);line-height:1.08;margin:1.2rem 0}h2{font-size:1.65rem;line-height:1.3;margin:2.5rem 0 1rem}p{margin:1.15rem 0}a{color:var(--accent);text-underline-offset:.2em}.meta,button,label,output{font-family:ui-monospace,monospace}.meta{color:var(--muted);font-size:.875rem}.lede{font-size:1.3rem}.equation,aside{background:var(--panel);padding:1.15rem;border-left:3px solid var(--accent)}.equation{font-family:ui-monospace,monospace;overflow-x:auto;white-space:nowrap}code{font-family:ui-monospace,monospace;font-size:.95em}.scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:1rem;white-space:nowrap}th,td{text-align:right;padding:.65rem;border-bottom:1px solid var(--rule)}th:first-child,td:first-child{text-align:left}caption{text-align:left;color:var(--muted);font-size:.9rem;margin-bottom:.75rem}summary{cursor:pointer;padding:.8rem 0;color:var(--accent)}details{border-top:1px solid var(--rule);margin:1.5rem 0}button{padding:.7rem 1rem;min-height:44px;background:var(--panel);color:var(--ink);border:1px solid var(--rule);cursor:pointer;font-size:.875rem}label{display:block;font-size:1rem}input{width:100%;min-height:44px;accent-color:var(--accent)}output{display:block;font-size:1rem;line-height:1.8}.widget{margin:1.5rem 0;padding:1.2rem;background:var(--panel)}footer{margin-top:3rem;border-top:1px solid var(--rule);padding-top:1rem;font-size:1rem;color:var(--muted)}:focus-visible{outline:3px solid var(--accent);outline-offset:3px}html[data-theme="dark"]{color-scheme:dark;--bg:#101c28;--ink:#e5edf3;--muted:#b4c4d1;--rule:#364b5e;--accent:#85cafa;--panel:#1a2c3c}html[data-theme="light"]{color-scheme:light;--bg:#f7fafc;--ink:#182a39;--muted:#4f6171;--rule:#c9d5df;--accent:#155a85;--panel:#eaf1f6}
+</style>
+</head>
+<body><main>
+<nav aria-label="Breadcrumb"><a href="index.html">Morning learning</a></nav><header><p class="meta">COMPUTER NETWORKS · 08 SEPTEMBER 2026 · 10 MINUTES WITH QUESTIONS</p><button id="theme" type="button" hidden>Switch theme</button><h1>What converges<br>in AIMD?</h1><p class="lede">Two flows can become equally treated while their combined window keeps rising and falling. The key is to follow two different quantities.</p></header>
+<h2>Start with a precise model</h2>
+<p>Take two continuously active flows with the same, fixed RTT. During congestion avoidance, each window grows by one packet per RTT. Whenever their sum reaches a chosen threshold, both windows halve at the same instant. Ignore timeouts, delayed feedback, integer rounding, and slow start.</p>
+<p>This is an idealized AIMD model, not a packet-level TCP implementation. A congestion window counts outstanding data; it is not itself a bandwidth. With the same fixed RTT, window shares can stand in for sending-rate shares within this model.</p>
+<p>Let the starting windows be 4 and 20 packets. Choose a total-window threshold of 48 packets. These are illustrative model parameters, not measurements of a network.</p>
+<h2>Separate the total from the difference</h2>
+<div class="equation">s = w₁ + w₂ &nbsp;&nbsp; d = |w₁ − w₂|</div>
+<p>During one RTT without a congestion event, both windows gain one. The total gains two, while the difference stays unchanged:</p>
+<div class="equation">s → s + 2 &nbsp;&nbsp; d → d</div>
+<p>At a shared congestion event, both windows halve. So do their sum and difference:</p>
+<div class="equation">s → s/2 &nbsp;&nbsp; d → d/2</div>
+<p>These rules act differently over a whole cycle. Growth replenishes the total window after every cut. Growth does not replenish the difference. That is why one quantity can keep cycling while the other tends to zero.</p>
+<h2>Execute three cycles</h2>
+<p>The starting sum is 24. Twelve RTTs add 12 packets to each flow, bringing the windows to 16 and 32. Their sum reaches 48; the cut leaves 8 and 16. Another twelve RTTs bring them to 20 and 28, and the next cut leaves 10 and 14.</p>
+<div class="scroll"><table><caption>Snapshots immediately after each cut; row 0 is the chosen initial state.</caption><thead><tr><th scope="col">Cuts m</th><th scope="col">w₁</th><th scope="col">w₂</th><th scope="col">Sum</th><th scope="col">Gap</th></tr></thead><tbody><tr><th scope="row">0</th><td>4</td><td>20</td><td>24</td><td>16</td></tr><tr><th scope="row">1</th><td>8</td><td>16</td><td>24</td><td>8</td></tr><tr><th scope="row">2</th><td>10</td><td>14</td><td>24</td><td>4</td></tr><tr><th scope="row">3</th><td>11</td><td>13</td><td>24</td><td>2</td></tr><tr><th scope="row">4</th><td>11.5</td><td>12.5</td><td>24</td><td>1</td></tr></tbody></table></div>
+<p>After <var>m</var> cuts, the gap is <code>16 / 2ᵐ</code>. At the same phase of successive cycles, the two windows approach 12 and 12. Between cuts, each still grows toward 24 before falling again.</p>
+<div class="widget" id="widget" hidden><label for="cuts">Inspect the state after <span id="count">3</span> cuts</label><input id="cuts" type="range" min="0" max="8" step="1" value="3"><output id="state" for="cuts" aria-live="polite">Windows: 11 and 13 packets. Sum: 24. Gap: 2.</output><p class="meta">This control samples the cycle immediately after a cut. It does not show the twelve RTTs of growth between cuts.</p></div>
+<h2>What does “converge” claim?</h2>
+<p>The gap converges to zero. The post-cut snapshots converge to equal windows. The continuously evolving total does not converge to a constant: it repeatedly rises from 24 toward 48 and then drops to 24. In this ideal model, the long-run behavior is an equal-share cycle.</p>
+<aside>“The flows become fair” and “the system settles at a fixed operating point” are different claims. Before arguing about convergence, name the quantity and when you sample it.</aside>
+<p>The number 48 here is a modeled congestion threshold in packets, not a measured link capacity in packets per second. Real utilization also depends on RTT, queues, and the relationship between in-flight data and service rate. This example establishes the window dynamics, not a universal utilization percentage.</p>
+<h2>Change the increase rule</h2>
+<p>Suppose both windows instead grow by the same multiplicative factor, 1.2 per RTT, and still halve together at congestion. Every update multiplies both windows by the same number. Their ratio therefore remains unchanged: starting at 4 and 20, the second window stays five times the first.</p>
+<p>The absolute gap grows during the increase phase and shrinks at cuts. Looking only at its shrinkage during cuts would miss the intervening growth. There is no correction toward equal shares in this common-factor model.</p>
+<details><summary>Check the ratio directly</summary><p>For any common positive factor <code>k</code>, <code>(kw₂)/(kw₁) = w₂/w₁</code>. Both growth and cuts preserve the ratio. With additive growth, <code>(w₂ + a)/(w₁ + a)</code> instead moves toward 1 when <code>a &gt; 0</code> and the windows are unequal and positive.</p></details>
+<h2>A question to take back to chat</h2>
+<p><strong>Suppose flow 1 has half the RTT of flow 2, while each still adds one packet per its own RTT. Over the same interval of wall-clock time, which step of the gap argument stops working?</strong> State the broken equality before guessing the final allocation.</p>
+<footer><p>Source and scope: <a href="https://www.rfc-editor.org/info/rfc5681/">RFC 5681, TCP Congestion Control</a>, describes congestion avoidance growth and TCP loss responses. The synchronized two-flow threshold model and numerical derivation here are explicit teaching simplifications. In particular, timeouts and fast recovery need more state than the simple “halve both windows” rule.</p></footer>
+</main><script>
+'use strict';
+const cuts=document.getElementById('cuts');
+function inspect(){const m=Number(cuts.value),gap=16/2**m;document.getElementById('count').textContent=m;document.getElementById('state').textContent=`Windows: ${12-gap/2} and ${12+gap/2} packets. Sum: 24. Gap: ${gap}.`;}
+cuts.addEventListener('input',inspect);inspect();document.getElementById('widget').hidden=false;
+const theme=document.getElementById('theme');theme.hidden=false;theme.addEventListener('click',()=>{const current=document.documentElement.dataset.theme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.dataset.theme=current==='dark'?'light':'dark';});
+</script></body></html>
