@@ -1,5 +1,13 @@
 [
   {
+    "date": "2026-09-09",
+    "title": "Why can a correct spinlock scale badly?",
+    "course": "Advanced Operating Systems",
+    "minutes": 18,
+    "file": "2026-09-09-spinlock-scalability.html",
+    "summary": "Trace how a lock cache line becomes a coherence hotspot, why test-test-and-set only partly helps, and how MCS queue locks turn global contention into directed local handoff."
+  },
+  {
     "date": "2026-09-08",
     "title": "What converges in AIMD?",
     "course": "Computer Networks",
