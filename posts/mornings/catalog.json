@@ -1,5 +1,13 @@
 [
   {
+    "date": "2026-09-10",
+    "title": "Why delay grows like 1 / (capacity − load)",
+    "course": "Computer Networks",
+    "minutes": 18,
+    "file": "2026-09-10-why-delay-explodes.html",
+    "summary": "Derive the reciprocal delay curve from accumulated work, a geometric backlog, and Little’s law—then keep utilization fixed and remove the randomness."
+  },
+  {
     "date": "2026-09-09",
     "title": "Why can a correct spinlock scale badly?",
     "course": "Advanced Operating Systems",
