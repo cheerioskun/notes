@@ -1,5 +1,13 @@
 [
   {
+    "date": "2026-09-11",
+    "title": "Why Breakwater deliberately overcommits",
+    "course": "Distributed Systems",
+    "minutes": 20,
+    "file": "2026-09-11-breakwater-overcommitment.html",
+    "summary": "Follow one credit ledger from safe underutilization to deliberate overcommitment, then see how queue-delay feedback and AQM contain the resulting incast risk."
+  },
+  {
     "date": "2026-09-10",
     "title": "Why delay grows like 1 / (capacity − load)",
     "course": "Computer Networks",
