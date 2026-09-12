@@ -1,5 +1,13 @@
 [
   {
+    "date": "2026-09-12",
+    "title": "How can an idle CPU be overloaded?",
+    "course": "Advanced Operating Systems / Research",
+    "minutes": 20,
+    "file": "2026-09-12-idle-cpu-overloaded.html",
+    "summary": "Follow two lock-protected paths to see why global utilization and delay signals conflict, then derive Protego’s split between throughput-driven admission and latency-aware lock queues."
+  },
+  {
     "date": "2026-09-11",
     "title": "Why Breakwater deliberately overcommits",
     "course": "Distributed Systems",
