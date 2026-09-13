@@ -1,5 +1,13 @@
 [
   {
+    "date": "2026-09-13",
+    "title": "What does ar actually build?",
+    "course": "Systems Toolchain",
+    "minutes": 20,
+    "file": "2026-09-13-what-ar-builds.html",
+    "summary": "Trace real C files from relocatable objects into a static archive, then step through how symbol demand and command order decide which members reach the executable."
+  },
+  {
     "date": "2026-09-12",
     "title": "How can an idle CPU be overloaded?",
     "course": "Advanced Operating Systems / Research",

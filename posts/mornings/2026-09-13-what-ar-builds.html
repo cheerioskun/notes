@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en" data-theme="auto"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>What does ar actually build?</title>
+<style>
+:root{color-scheme:light;--bg:#f5f1e7;--paper:#fffaf0;--ink:#202725;--muted:#626a66;--rule:#cbc4b5;--accent:#275f71;--rust:#a94f31;--green:#426a50;--panel:#e9e4d8;--code:#17201f;--codeink:#e6ede8;--soft:#dfe9e6;--progress:#275f71}html[data-theme="dark"]{color-scheme:dark;--bg:#151b1a;--paper:#1d2523;--ink:#e8ede8;--muted:#b5bfba;--rule:#46504b;--accent:#7abdd2;--rust:#ef9b77;--green:#91c79c;--panel:#232d2a;--code:#0d1312;--codeink:#dce8e1;--soft:#203431;--progress:#7abdd2}@media(prefers-color-scheme:dark){html[data-theme="auto"]{color-scheme:dark;--bg:#151b1a;--paper:#1d2523;--ink:#e8ede8;--muted:#b5bfba;--rule:#46504b;--accent:#7abdd2;--rust:#ef9b77;--green:#91c79c;--panel:#232d2a;--code:#0d1312;--codeink:#dce8e1;--soft:#203431;--progress:#7abdd2}}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font:1.125rem/1.78 Georgia,serif}.progress{position:fixed;z-index:10;left:0;top:0;height:4px;width:0;background:var(--progress)}main{max-width:51rem;margin:auto;padding:2rem 1.2rem 5rem}.topline{display:flex;align-items:center;justify-content:space-between;gap:1rem;font:.86rem/1.5 ui-monospace,monospace}.theme,button{min-height:44px;padding:.4rem .75rem;border:1px solid var(--rule);background:var(--paper);color:var(--ink);font:1rem/1.4 ui-monospace,monospace;cursor:pointer}header{border-bottom:3px solid var(--ink);padding:1rem 0 1.6rem}h1{font-size:clamp(2.8rem,9vw,4.35rem);line-height:1.03;letter-spacing:-.04em;margin:.7rem 0 1rem}h1 code{font:.82em ui-monospace,monospace}h2{font-size:1.9rem;line-height:1.25;margin:3.2rem 0 1rem}h3{font-size:1.28rem;line-height:1.35;margin:2rem 0 .65rem}p{margin:1.05rem 0}.lede{font-size:1.34rem;line-height:1.56}.meta,.eyebrow{font:.85rem/1.55 ui-monospace,monospace;color:var(--muted)}a{color:var(--accent);text-underline-offset:.2em}code{font:.92em ui-monospace,monospace}pre{margin:1.3rem 0;padding:1rem 1.1rem;background:var(--code);color:var(--codeink);font:0.91rem/1.62 ui-monospace,monospace;overflow:auto;border-left:4px solid var(--accent);tab-size:4}pre .dim{color:#9daaa4}pre .hot{color:#ffb28f}pre .good{color:#a8dab0}.equation,aside,.widget,.object{padding:1rem 1.1rem;margin:1.4rem 0;border:1px solid var(--rule);background:var(--panel)}aside{border-left:4px solid var(--accent)}.equation{font:1rem/1.8 ui-monospace,monospace;overflow:auto;background:var(--paper)}.question{font-size:1.22rem;font-style:italic;color:var(--accent);margin:2rem 0}.pipeline{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:.5rem;align-items:stretch;margin:1.5rem 0}.pipebox{display:grid;place-items:center;padding:.8rem;border:1px solid var(--rule);background:var(--paper);text-align:center;font:.88rem/1.45 ui-monospace,monospace}.arrow{display:grid;place-items:center;color:var(--muted);font-family:ui-monospace,monospace}.objects{display:grid;grid-template-columns:repeat(3,1fr);gap:.65rem;margin:1.2rem 0}.object{margin:0;background:var(--paper);padding:.75rem;min-width:0}.object h3{margin:0 0 .5rem;font:.95rem/1.4 ui-monospace,monospace}.defined{color:var(--green)}.undefined{color:var(--rust)}.symbol{display:block;font:.8rem/1.5 ui-monospace,monospace;overflow-wrap:anywhere}.flags{display:grid;grid-template-columns:repeat(3,1fr);gap:.65rem;margin:1.2rem 0}.flag{padding:1rem;border:1px solid var(--rule);background:var(--paper)}.flag strong{display:block;font:1.8rem/1 ui-monospace,monospace;color:var(--accent);margin-bottom:.55rem}.widget{background:var(--panel)}.orders,.controls{display:flex;flex-wrap:wrap;gap:.5rem;margin:.8rem 0}.selected{background:var(--ink);color:var(--bg);border-color:var(--ink)}.resolver{display:grid;grid-template-columns:1fr 1fr;gap:.65rem;margin:1rem 0}.statebox{padding:.8rem;border:1px solid var(--rule);background:var(--paper);min-height:6.4rem}.statebox strong{display:block;font:.78rem/1.4 ui-monospace,monospace;color:var(--muted);margin-bottom:.45rem}.chips{display:flex;flex-wrap:wrap;gap:.35rem}.chip{padding:.22rem .45rem;border:1px solid var(--rule);font:.78rem/1.3 ui-monospace,monospace;background:var(--soft)}.chip.bad{background:transparent;border-color:var(--rust);color:var(--rust)}output{display:block;min-height:5.5rem;padding:.85rem;background:var(--paper);border:1px solid var(--rule);font:1rem/1.6 ui-monospace,monospace}.stepbar{display:flex;justify-content:space-between;align-items:center;gap:.6rem;color:var(--muted);font:.85rem/1.4 ui-monospace,monospace}.scroll{overflow:auto}table{border-collapse:collapse;width:100%;font-size:1rem;margin:1.2rem 0}th,td{padding:.68rem;border-bottom:1px solid var(--rule);text-align:left;vertical-align:top}th{font:.86rem/1.4 ui-monospace,monospace}.contrast{display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin:1.4rem 0}.contrast>div{padding:1rem;border:1px solid var(--rule);background:var(--paper)}.contrast h3{margin:.1rem 0 .6rem}.static{border-top:4px solid var(--accent)!important}.shared{border-top:4px solid var(--rust)!important}details{border-top:1px solid var(--rule);margin:2rem 0}summary{padding:.9rem 0;cursor:pointer;color:var(--accent)}footer{border-top:1px solid var(--rule);padding-top:1rem;margin-top:3rem;color:var(--muted);font-size:1rem}:focus-visible{outline:3px solid var(--accent);outline-offset:3px}@media(max-width:620px){.pipeline{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}.objects,.flags,.resolver,.contrast{grid-template-columns:1fr}h1{font-size:2.65rem}.lede{font-size:1.2rem}.topline{align-items:flex-start}}
+</style></head><body><div class="progress" id="progress" aria-hidden="true"></div><main><div class="topline"><nav><a href="index.html">Morning learning</a></nav><button class="theme" id="theme" type="button" aria-label="Change color theme">theme: auto</button></div><header><p class="meta">SYSTEMS TOOLCHAIN · 13 SEPTEMBER 2026 · ABOUT 20 MINUTES WITH THE LINKER LAB</p><h1>What does <code>ar</code> actually build?</h1><p class="lede">The compiler has produced several <code>.o</code> files. Then one quiet command—<code>ar rcs libtiny.a …</code>—turns them into a library. It did not compile, link, or make anything runnable. Its real job becomes visible only when another program asks the linker for one symbol.</p></header>
+
+<h2>The build stops one step before a program</h2>
+<p>Consider this ordinary build fragment:</p>
+<pre><span class="dim">$</span> gcc -g -c thread.c -o thread.o
+<span class="dim">$</span> gcc -g -c queue.c  -o queue.o
+<span class="dim">$</span> ar rcs libtinythreads.a thread.o queue.o</pre>
+<p>The <code>-c</code> tells GCC to compile and assemble each source file but stop before linking. The outputs are <em>relocatable object files</em>. They already contain machine instructions, but their final addresses are not fixed and some names may still point outside the file.</p>
+<p>The last line invokes the archiver, conventionally called <code>ar</code>. It stores the object files as named members inside one archive and writes an index of the symbols they define. The result is convenient linker input, not an executable.</p>
+<div class="pipeline" role="img" aria-label="Source files compile separately into relocatable object files, ar collects objects in a static library, and the linker later combines an application object with needed library members"><div class="pipebox"><strong>source</strong><br>thread.c<br>queue.c</div><div class="arrow">gcc -c →</div><div class="pipebox"><strong>objects</strong><br>thread.o<br>queue.o</div><div class="arrow">ar rcs →</div><div class="pipebox"><strong>static archive</strong><br>libtinythreads.a<br><span class="meta">still not runnable</span></div></div>
+<p>This distinction matters because the archive has deferred a decision. It has not decided where the object code will live or whether every member is needed. The final linker makes those decisions separately for each program that uses the library.</p>
+
+<h2>Build a library small enough to see through</h2>
+<p>We will carry three files through the real GNU toolchain. The application calls <code>double_it</code>. The library contains that function and a second function that nobody calls.</p>
+<pre><span class="dim">/* main.c */</span>
+#include &lt;stdio.h&gt;
+int double_it(int x);
+
+int main(void) {
+    printf("%d\n", double_it(21));
+    return 0;
+}
+
+<span class="dim">/* math.c */</span>
+int double_it(int x) { return x * 2; }
+
+<span class="dim">/* unused.c */</span>
+int hidden_bonus(void) { return 99; }</pre>
+<p>The commands below were run on an x86-64 Ubuntu 24.04 environment with GCC 13.3 and GNU Binutils 2.42. First, compile each translation unit independently:</p>
+<pre><span class="dim">$</span> gcc -Wall -Wextra -O0 -c main.c math.c unused.c
+<span class="dim">$</span> file main.o math.o unused.o
+main.o:   ELF 64-bit LSB relocatable, x86-64, ...
+math.o:   ELF 64-bit LSB relocatable, x86-64, ...
+unused.o: ELF 64-bit LSB relocatable, x86-64, ...
+
+<span class="dim">$</span> readelf -h math.o | grep -E 'Type:|Machine:'
+  Type:    REL (Relocatable file)
+  Machine: Advanced Micro Devices X86-64</pre>
+<p><code>REL</code> is the ELF file type for relocatable code. “Relocatable” does not mean portable across instruction sets. These files contain x86-64 instructions and relocation records for an x86-64 linker. Putting them in a <code>.a</code> archive will not translate them to Arm.</p>
+<aside><strong>Useful diagnosis:</strong> when a library built inside an x86-64 container will not link into an Arm-native program, inspect its members with <code>file</code> or <code>readelf -h</code>. The archive is packaging; architecture compatibility still belongs to the object files inside it.</aside>
+
+<h2>An object file is a promise plus a list of debts</h2>
+<p>Run <code>nm -g</code> to inspect globally visible symbols:</p>
+<pre><span class="dim">$</span> nm -g main.o math.o unused.o
+
+main.o:
+                 <span class="hot">U double_it</span>
+0000000000000000 <span class="good">T main</span>
+                 <span class="hot">U printf</span>
+
+math.o:
+0000000000000000 <span class="good">T double_it</span>
+
+unused.o:
+0000000000000000 <span class="good">T hidden_bonus</span></pre>
+<p><code>T</code> means the symbol is defined in the object’s text—the machine-code section. <code>U</code> means undefined here: <code>main.o</code> contains a call site for <code>double_it</code>, but not its implementation. It also owes the linker a definition of <code>printf</code>.</p>
+<div class="objects"><div class="object"><h3>main.o</h3><span class="symbol defined">defines: main</span><span class="symbol undefined">needs: double_it, printf</span></div><div class="object"><h3>math.o</h3><span class="symbol defined">defines: double_it</span></div><div class="object"><h3>unused.o</h3><span class="symbol defined">defines: hidden_bonus</span></div></div>
+<p>The address shown as zero does not say every function will execute at address zero. At this stage, the symbol’s value is relative to its section. The final linker lays sections into an address space, resolves cross-file references, and patches relocation sites.</p>
+<p class="question">If <code>ar</code> is not the linker, what useful work can it do with these unresolved names?</p>
+
+<h2>Read <code>ar rcs</code> one letter at a time</h2>
+<pre><span class="dim">$</span> ar rcs libtiny.a math.o unused.o
+<span class="dim">$</span> file libtiny.a
+libtiny.a: current ar archive
+
+<span class="dim">$</span> ar t libtiny.a
+math.o
+unused.o</pre>
+<div class="flags"><div class="flag"><strong>r</strong>Insert the named members, replacing same-named members already in the archive.</div><div class="flag"><strong>c</strong>Create the archive if absent, while suppressing the warning that creation was implicit.</div><div class="flag"><strong>s</strong>Write or refresh an index mapping defined symbols to the members that contain them.</div></div>
+<p>The letters are compact because <code>ar</code> predates modern long-option conventions. <code>r</code> is the operation; <code>c</code> and <code>s</code> modify it. Rebuilding after changing <code>math.o</code> replaces that member. It does not inspect your C source or understand functions as C declarations; it handles archive members and the symbols found in relocatable object formats.</p>
+<p>The index is the part that makes the archive useful as a library. GNU <code>ar</code> documents <code>nm -s</code> as a way to print it:</p>
+<pre><span class="dim">$</span> nm -s libtiny.a
+
+Archive index:
+double_it in math.o
+hidden_bonus in unused.o
+
+math.o:
+0000000000000000 T double_it
+
+unused.o:
+0000000000000000 T hidden_bonus</pre>
+<p>The index is a directory: “if the linker needs <code>double_it</code>, inspect <code>math.o</code>.” It avoids searching every member’s full contents. Running <code>ranlib libtiny.a</code> would build the same kind of index; with GNU tools, the <code>s</code> modifier already did it.</p>
+
+<h2>The linker treats the archive as a demand-loaded shelf</h2>
+<p>Now link the application:</p>
+<pre><span class="dim">$</span> gcc main.o -L. -ltiny -o demo
+<span class="dim">$</span> ./demo
+42</pre>
+<p><code>-L.</code> adds the current directory to the library search path. <code>-ltiny</code> asks for a library named <code>tiny</code>; the conventional static filename is <code>libtiny.a</code>. GCC drives the linker and also supplies startup objects and standard libraries, which later satisfy <code>printf</code>.</p>
+<p>Walk the important part as a symbol transaction:</p>
+<div class="equation">1. read main.o<br>&nbsp;&nbsp;definitions seen: main<br>&nbsp;&nbsp;unresolved: double_it, printf<br><br>2. search libtiny.a<br>&nbsp;&nbsp;index says math.o defines double_it<br>&nbsp;&nbsp;extract math.o; resolve double_it<br>&nbsp;&nbsp;hidden_bonus is not needed → leave unused.o on the shelf<br><br>3. search compiler-supplied libraries<br>&nbsp;&nbsp;resolve printf<br>&nbsp;&nbsp;unresolved set is empty → link succeeds</div>
+<p>The GNU link map records the reason a member was selected:</p>
+<pre><span class="dim">$</span> gcc main.o libtiny.a -Wl,-Map=demo.map -o demo-map
+<span class="dim">$</span> head -3 demo.map
+Archive member included to satisfy reference by file (symbol)
+libtiny.a(math.o)             main.o (double_it)</pre>
+<p>And the executable’s symbols confirm the result:</p>
+<pre><span class="dim">$</span> nm -g demo | grep -E 'double_it|hidden_bonus'
+0000000000001178 T double_it</pre>
+<p><code>double_it</code> arrived in the executable. <code>hidden_bonus</code> did not. A normal static-library link does not blindly paste every archive member into every program; it extracts members that satisfy references encountered during the link.</p>
+
+<h2>Link order is the moment the mechanism becomes undeniable</h2>
+<p>GNU ld processes file inputs where they appear on the command line. An ordinary archive is searched to satisfy symbols that are unresolved <em>at that point</em>. Put the archive before the object that creates the need:</p>
+<pre><span class="dim">$</span> gcc -L. -ltiny main.o -o wrong-order
+<span class="hot">/usr/bin/ld: main.o: in function `main':
+main.c:(.text+0xe): undefined reference to `double_it'
+collect2: error: ld returned 1 exit status</span></pre>
+<p>When <code>libtiny.a</code> was examined, the unresolved set did not yet contain <code>double_it</code>, so no member was selected. Only afterward did <code>main.o</code> create the unresolved reference. The ordinary link did not travel backward and search that archive again.</p>
+<p>Step through both orders below. Watch the unresolved-symbol set at the exact moment the archive is visited.</p>
+<section class="widget" id="resolver" hidden aria-label="Static archive link-order simulator"><p class="eyebrow">LINK-ORDER LAB — MODELS THE OBSERVED GNU LD CASE ABOVE</p><div class="orders" role="group" aria-label="Choose input order"><button type="button" id="good-order" class="selected">main.o → libtiny.a</button><button type="button" id="bad-order">libtiny.a → main.o</button></div><div class="stepbar"><span id="step-label">step 0 of 3</span><div class="controls"><button type="button" id="reset">reset</button><button type="button" id="next">next step</button></div></div><div class="resolver"><div class="statebox"><strong>UNRESOLVED SYMBOLS</strong><div class="chips" id="unresolved"><span class="meta">none</span></div></div><div class="statebox"><strong>ARCHIVE MEMBERS EXTRACTED</strong><div class="chips" id="extracted"><span class="meta">none</span></div></div></div><output id="link-state" aria-live="polite"></output></section>
+<p>This is also why libraries usually appear after the object files that use them:</p>
+<div class="equation">gcc main.o worker.o -L. -ltinythreads -o app<br>&nbsp;&nbsp;&nbsp;&nbsp;↑ needs first &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↑ supplier afterward</div>
+<p>Circular dependencies among multiple static libraries complicate the one-pass story. GNU ld provides archive groups that repeatedly search a set until no new references are created. That is an escape hatch, not a reason to forget the default mechanism.</p>
+
+<h2>What “static” means—and what it does not</h2>
+<div class="contrast"><div class="static"><h3>Static library: <code>.a</code></h3><p>An archive of relocatable objects used during the link. Needed members contribute code to the resulting executable. The program does not need <code>libtiny.a</code> present at runtime.</p></div><div class="shared"><h3>Shared library: <code>.so</code></h3><p>A loadable shared object. The executable can retain a dynamic dependency, and the runtime loader maps a compatible library when the program starts.</p></div></div>
+<p>Our executable still uses shared system libraries:</p>
+<pre><span class="dim">$</span> ldd ./demo
+    linux-vdso.so.1 (...)
+    libc.so.6 =&gt; /lib/x86_64-linux-gnu/libc.so.6 (...)
+    /lib64/ld-linux-x86-64.so.2 (...)</pre>
+<p><code>libtiny.a</code> does not appear because it is not a runtime dependency. Its selected member was incorporated at link time. This does not make the whole executable “fully static”; libc is still dynamically linked. Static versus dynamic can be decided per library.</p>
+<p>Nor does a <code>.a</code> guarantee that every byte is copied. The ordinary archive rule selects needed <em>members</em>. Finer removal can depend on how functions were placed into sections and which linker garbage-collection options were enabled. The useful default model is member-level demand loading, then refine it when build flags make section-level behavior relevant.</p>
+
+<h2>Return to the quiet build line</h2>
+<p>We can now read the command without treating it as punctuation:</p>
+<pre>ar rcs libtinythreads.a thread.o queue.o</pre>
+<p>It says: create or update an archive named <code>libtinythreads.a</code>; replace its <code>thread.o</code> and <code>queue.o</code> members with these versions; and write an index from their defined symbols to those members. Nothing runs. No unresolved reference is resolved. No final address is chosen.</p>
+<p>Later, a program’s link command places its own object files before the archive. Those objects create unresolved function names. The linker consults the archive index, extracts only the object members that pay those debts, lays their sections into the final image, and patches the call sites. That later demand is the reason <code>ar</code> preserved separate object members instead of flattening them into one executable.</p>
+<aside><strong>Carry this model:</strong> <code>gcc -c</code> creates relocatable pieces; <code>ar</code> packages and indexes pieces; the linker selects pieces, resolves names, relocates code, and creates the runnable image.</aside>
+<p>Change one assumption: replace <code>ar</code> with <code>gcc -r math.o unused.o -o combined.o</code>. That performs a partial link and produces one larger relocatable object. When a later program needs <code>double_it</code>, it now selects <code>combined.o</code> as a whole; <code>hidden_bonus</code> travels in the same input member unless section garbage collection removes it. The archive’s preserved member boundary was doing real selection work.</p>
+<details><summary>Retrieval check: diagnose the failed command</summary><p><code>gcc -L. -ltiny main.o -o demo</code> finds the correct archive and the archive contains the correct definition, yet the link fails. The failure is not compilation or architecture. At the instant the linker searched <code>libtiny.a</code>, it had not read <code>main.o</code>, so <code>double_it</code> was not unresolved and <code>math.o</code> was not extracted. Put <code>main.o</code> before <code>-ltiny</code>.</p></details>
+<footer><p>Primary references: the GNU Binary Utilities manuals for <a href="https://sourceware.org/binutils/docs/binutils/ar.html"><code>ar</code> archives and symbol indexes</a> and <a href="https://sourceware.org/binutils/docs/binutils/ar-cmdline.html"><code>r</code>, <code>c</code>, and <code>s</code></a>; the GCC manual for <a href="https://gcc.gnu.org/onlinedocs/gcc/Link-Options.html">static-library naming, search paths, and input order</a>. Command output was observed in the stated Ubuntu/GCC/Binutils environment; addresses and loader paths vary between builds.</p><p><a href="index.html">Back to the morning archive</a></p></footer></main><script src="static-linker.js"></script></body></html>
