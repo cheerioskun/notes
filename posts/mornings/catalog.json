@@ -1,5 +1,13 @@
 [
   {
+    "date": "2026-09-14",
+    "title": "How does 100 ms become a preemption?",
+    "course": "Operating Systems",
+    "minutes": 20,
+    "file": "2026-09-14-how-100ms-preempts.html",
+    "summary": "Follow one ITIMER_VIRTUAL quantum through CPU-time accounting, signal delivery, saved registers, and a user-level scheduler—then expose the process-wide timer trap."
+  },
+  {
     "date": "2026-09-13",
     "title": "What does ar actually build?",
     "course": "Systems Toolchain",
