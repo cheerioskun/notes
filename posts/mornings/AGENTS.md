@@ -11,3 +11,11 @@ Scope: this directory and its descendants. Preserve the surrounding notes site a
 - Read the latest branch head before editing. Validate changed local links, inline JavaScript syntax, and one meaningful model case. Commit article, catalog, and index changes atomically. Never force-push or overwrite concurrent changes.
 - A successful commit does not prove successful hosting. Verify the live page or deployment status before claiming it is live.
 - Scheduling and learner evidence are maintained privately. Do not invent learner answers, topic pacing, or evidence of retention. When the private state is unavailable, report that limitation rather than reconstructing personal details into this public repository.
+
+## Visual variety between lessons
+
+- Give each new lesson a deliberate visual identity suited to its subject. Inspect the last few lessons before choosing the next design, and vary composition, typography, palette, illustration style, or interaction form in ways a reader will notice. Repeatedly recoloring the same page template is insufficient.
+- Fun, whimsy, and expressive colors are welcome. Possible directions include a field notebook, comic panels, a retro control room, a transit map, a colorful magazine, or cut-paper diagrams. These are examples to explore, not a fixed rotation or a requirement to force a metaphor onto every topic.
+- Let the mechanism suggest the visual treatment: a scheduling timeline can become a dispatch board; a queue can become a playful procession. Keep the visual language coherent within a lesson and make illustrations and interactions help explain the behavior.
+- Reuse components and accessible behaviors while allowing different page structures and visual treatments. Shared code must not force every article into the same visible shell.
+- Preserve the full reading path, clear hierarchy, readable prose, legible code and equations, sufficient contrast, responsive layouts, touch-friendly controls, and reduced-motion support. Playfulness should make an explanation inviting without interrupting sustained reading.
