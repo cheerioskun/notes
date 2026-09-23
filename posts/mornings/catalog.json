@@ -1,5 +1,13 @@
 [
   {
+    "date": "2026-09-23",
+    "title": "BBR: how fast is the path, really?",
+    "course": "Computer Networks",
+    "minutes": 25,
+    "file": "2026-09-23-bbr.html",
+    "summary": "Build BBR from one path: distinguish rate from flight volume, measure capacity through ACKs, probe deliberately, and confront the limits of an end-to-end model."
+  },
+  {
     "date": "2026-09-14",
     "title": "How does 100 ms become a preemption?",
     "course": "Operating Systems",
