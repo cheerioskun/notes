@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="Reservoir computing from first principles: fading memory, nonlinear features, a trained readout, and a live experiment you can take apart. An 8–10 minute illustrated guide.">
+<title>Reservoir computing: let the system move, learn how to read it</title>
+<style>
+:root{color-scheme:light;--bg:#f3f2e9;--paper:#fbfaf4;--ink:#243a31;--muted:#5b6b62;--line:#b9c4b7;--green:#28614c;--orange:#ae4b2c;--soft:#e5eadf;--wash:#d7e0d2;--blue:#286682;--code:#20372f;--codeink:#f1f2e6}
+html[data-theme=dark]{color-scheme:dark;--bg:#15231d;--paper:#1c2c24;--ink:#e9eee2;--muted:#b2c1b2;--line:#4b6051;--green:#a4d4ac;--orange:#f0ab88;--soft:#253b2f;--wash:#324637;--blue:#98cddd;--code:#0f1a15;--codeink:#e9eee2}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:2rem}body{margin:0;background:var(--bg);color:var(--ink);font:1.16rem/1.72 Georgia,"Times New Roman",serif}a{color:var(--green);text-underline-offset:.19em}button,input{font:inherit}button{cursor:pointer;min-height:44px;border:1px solid var(--line);padding:.5rem .9rem;background:var(--paper);color:var(--ink);border-radius:4px}button:hover{border-color:var(--green)}button:disabled{opacity:.45;cursor:default}:focus-visible{outline:3px solid var(--orange);outline-offset:4px}p{margin:1.15rem 0}strong{font-weight:700}code{font:.86em ui-monospace,SFMono-Regular,Consolas,monospace}sup{font: .7em ui-monospace,monospace}sup a{text-decoration:none}.skip{position:absolute;top:-8rem;background:var(--paper);padding:1rem;z-index:10}.skip:focus{top:0}.top{max-width:1120px;margin:auto;padding:1.2rem 2rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;font:.82rem/1.5 ui-monospace,monospace}.top a{text-decoration:none}.top button{font:.8rem ui-monospace,monospace}.cover{max-width:1120px;margin:1rem auto 3.5rem;padding:2.8rem 2rem 0;display:grid;grid-template-columns:1.4fr 1fr;gap:2.5rem;align-items:center}.eyebrow,.small-label{font:.76rem/1.6 ui-monospace,monospace;text-transform:uppercase;letter-spacing:.12em;color:var(--muted)}.eyebrow{margin:0 0 1.5rem}h1{font-weight:400;font-size:clamp(3.3rem,6.8vw,5.6rem);letter-spacing:-.052em;line-height:1.02;margin:0 0 1.5rem}h1 em{color:var(--green)}.dek{font-size:1.32rem;line-height:1.5;max-width:33rem}.cover figcaption{font:.78rem/1.5 ui-monospace,monospace;color:var(--muted);margin-top:.5rem}.cover figure{margin:0}.cover svg{width:100%;display:block;color:var(--ink)}.cover svg text{fill:var(--ink);font:14px ui-monospace,monospace}.cover svg .note{fill:var(--muted);font-size:11px}.cover svg .fixed{stroke:var(--green)}.cover svg .learned{stroke:var(--orange)}.cover svg .node{fill:var(--paper);stroke:var(--green);stroke-width:1.8}.cover svg .fillgreen{fill:var(--green)}.cover svg .fillorange{fill:var(--orange)}
+main{max-width:730px;margin:0 auto;padding:0 1.5rem 4rem}.intro{font-size:1.25rem}.route{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:1.2rem 0;margin:2rem 0 3rem;display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;font:.83rem/1.5 ui-monospace,monospace}.route a{text-decoration:none}.route span{display:block;color:var(--muted);font-size:.75rem;margin-bottom:.3rem}h2{font-size:2.05rem;line-height:1.2;letter-spacing:-.035em;font-weight:400;margin:.5rem 0 1.2rem}section{margin-top:3.5rem}.section-label{font:.74rem ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--orange);margin-bottom:.8rem}.equation{background:var(--soft);padding:1.1rem 1.2rem;margin:1.5rem 0;font:1.05rem/1.85 ui-monospace,monospace;overflow-wrap:anywhere}.equation .small-label{display:block;font-size:.68rem;margin-bottom:.4rem}.equation .frozen{color:var(--green)}.equation .trained{color:var(--orange)}.wide{width:calc(100% + 6rem);margin-left:-3rem}.truth{width:100%;border-collapse:collapse;margin:1.5rem 0;font:.95rem/1.6 ui-monospace,monospace}.truth caption{text-align:left;font:.8rem/1.5 ui-monospace,monospace;color:var(--muted);margin-bottom:.6rem}.truth th{font-size:.75rem;font-weight:400;color:var(--muted)}.truth th,.truth td{padding:.65rem .5rem;text-align:center;border-bottom:1px solid var(--line)}.truth tbody tr:nth-child(2),.truth tbody tr:nth-child(3){background:var(--soft)}.truth td:last-child{font-weight:700;color:var(--green)}.aside{border-left:3px solid var(--green);padding:.2rem 0 .2rem 1.2rem;font-size:1.06rem}.aside p{margin:.6rem 0}.fitting{padding-left:1.35rem}.fitting li{padding-left:.35rem;margin:.6rem 0}.experiment{background:var(--paper);border:1px solid var(--line);border-top:4px solid var(--green);padding:1.6rem 1.8rem;margin-top:2rem;margin-bottom:2rem}.experiment h3{font-size:1.45rem;font-weight:400;margin:.3rem 0 .65rem}.experiment p{font-size:1rem;line-height:1.6}.experiment .small-label{font-size:.7rem}.modes{display:flex;flex-wrap:wrap;gap:.45rem;margin:1rem 0}.modes button{font:.8rem/1.4 ui-monospace,monospace;flex:1;min-width:9rem}.modes button[aria-pressed=true]{background:var(--green);color:var(--bg);border-color:var(--green)}.results{display:grid;grid-template-columns:1fr 1fr;gap:1rem;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:1rem 0}.results .number{display:block;font:2.1rem/1.15 ui-monospace,monospace;letter-spacing:-.06em}.results .caption{font:.72rem/1.5 ui-monospace,monospace;color:var(--muted);display:block;margin-top:.3rem}.result-note{min-height:4.5rem}.input-strip{display:flex;gap:5px;align-items:center;justify-content:center;margin:1.4rem 0 .6rem}.bit{width:30px;height:35px;display:grid;place-items:center;border:1px solid var(--line);font:.9rem ui-monospace,monospace}.bit.current{background:var(--green);color:var(--bg);border-color:var(--green)}.bit.previous{border-bottom:4px solid var(--orange)}.state-chart{display:block;width:100%;color:var(--ink);margin:.5rem 0}.state-chart text{fill:currentColor;font:13px ui-monospace,monospace}.state-chart .axis{stroke:var(--line);stroke-width:1}.state-chart .state-bar{fill:var(--green)}.state-chart .negative{fill:var(--blue)}.trace-controls{display:flex;justify-content:space-between;align-items:center;gap:.7rem;flex-wrap:wrap}.trace-controls button{font:.78rem ui-monospace,monospace}.trace-controls output{font:.75rem ui-monospace,monospace;color:var(--muted)}.step-readout{font: .87rem/1.75 ui-monospace,monospace!important;background:var(--soft);padding:.8rem 1rem;min-height:4.9rem}.key{display:flex;flex-wrap:wrap;gap:1rem;font:.71rem/1.5 ui-monospace,monospace;color:var(--muted)}.key span:before{content:"";display:inline-block;width:12px;height:12px;margin-right:.4rem;background:var(--green)}.key span:nth-child(2):before{background:var(--orange)}.method{border-top:1px solid var(--line);margin-top:1.5rem;padding-top:.8rem;font-size:.9rem}.method p{font-size:.9rem}summary{cursor:pointer;color:var(--green);padding:.4rem 0;font:.85rem/1.5 ui-monospace,monospace}pre{overflow:auto;background:var(--code);color:var(--codeink);padding:1.2rem;font:.85rem/1.7 ui-monospace,monospace;margin:1rem 0}.map{border-top:1px solid var(--line);margin:1.5rem 0}.map-row{display:grid;grid-template-columns:9.5rem 1fr;gap:1.2rem;padding:1rem 0;border-bottom:1px solid var(--line)}.map-row dt{font:.86rem/1.5 ui-monospace,monospace;color:var(--green)}.map-row dd{margin:0;font:1.03rem/1.55 Georgia,serif}.takeaway{font-size:1.4rem;line-height:1.5;margin-top:2rem;padding:1rem 0;border-top:2px solid var(--green)}footer{font-size:.9rem;color:var(--muted);border-top:1px solid var(--line);padding-top:1.5rem;margin-top:3rem}footer h2{font-size:1.4rem}footer ol{padding-left:1.2rem}footer li{padding-left:.3rem;margin:.65rem 0}footer .colophon{font:.75rem/1.65 ui-monospace,monospace;margin-top:1.5rem}noscript p{border:1px solid var(--orange);padding:1rem}
+@media(max-width:900px){.cover{gap:1rem;grid-template-columns:1.3fr 1fr;padding-top:1.3rem}.wide{width:100%;margin-left:0}}
+@media(max-width:650px){body{font-size:1.08rem}.top{padding:1rem 1.2rem}.cover{display:block;padding:1.7rem 1.3rem 0;margin-bottom:2rem}.cover h1{font-size:3.6rem;max-width:20rem}.dek{font-size:1.2rem}.cover figure{max-width:320px;margin:1.5rem auto}.cover figcaption{font-size:.72rem}main{padding:0 1.25rem 3rem}.route{gap:.6rem;font-size:.75rem}.route span{font-size:.68rem}h2{font-size:1.8rem}.experiment{padding:1.1rem .8rem}.modes button{min-width:7rem;font-size:.72rem;padding:.45rem}.bit{width:24px;height:31px}.input-strip{gap:3px}.results .number{font-size:1.85rem}.truth{font-size:.82rem}.truth th{font-size:.65rem}.truth th,.truth td{padding:.55rem .2rem}.map-row{grid-template-columns:1fr;gap:.35rem}.result-note{min-height:6rem}.equation{font-size:.85rem}.step-readout{font-size:.75rem!important}.trace-controls{display:grid;grid-template-columns:1fr 1fr;gap:.45rem}.trace-controls output{grid-column:1/-1;grid-row:1;text-align:center}.trace-controls button{padding:.5rem;white-space:nowrap}.takeaway{font-size:1.25rem}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}@media print{button,.trace-controls,.modes{display:none}.wide{width:100%;margin-left:0}body{background:white;color:black}.cover{margin-bottom:1rem}.experiment{break-inside:avoid}a{color:inherit}}
+</style>
+</head>
+<body>
+<a class="skip" href="#article">Skip to the explanation</a>
+<nav class="top" aria-label="Site navigation"><a href="index.html">NOTES / THE READING ARCHIVE</a><button id="theme" type="button">Dark mode</button></nav>
+<header class="cover">
+<div><p class="eyebrow">28 September 2026 · 8–10 minutes</p><h1>Reservoir<br><em>computing.</em></h1><p class="dek">Let the system move.<br>Learn how to read it.</p><p class="small-label">Memory → nonlinear features → a useful answer</p></div>
+<figure>
+<svg viewBox="0 0 360 350" role="img" aria-labelledby="machine-title machine-desc">
+<title id="machine-title">The part you train is the readout</title><desc id="machine-desc">An input stream enters a fixed recurrent network. Loops carry earlier state forward. Trained output connections combine the changing node values into an answer.</desc>
+<defs><marker id="arr-fixed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="fillgreen"/></marker><marker id="arr-learned" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" class="fillorange"/></marker></defs>
+<text x="30" y="25">INPUT STREAM</text><text x="220" y="25" class="note">0 1 1 0 1 …</text>
+<path d="M180 42V85" fill="none" class="fixed" stroke-width="2" marker-end="url(#arr-fixed)"/>
+<rect x="36" y="91" width="288" height="149" rx="70" fill="var(--soft)" stroke="var(--line)"/>
+<g fill="none" class="fixed" stroke-width="1.3" marker-end="url(#arr-fixed)"><path d="M97 149L165 121L248 152L205 204L130 203L97 149"/><path d="M165 121L205 204M130 203L248 152M248 152Q292 93 213 108"/><path d="M130 203Q51 230 72 165"/></g>
+<g class="node"><circle cx="97" cy="149" r="12"/><circle cx="165" cy="121" r="12"/><circle cx="248" cy="152" r="12"/><circle cx="205" cy="204" r="12"/><circle cx="130" cy="203" r="12"/></g>
+<text x="148" y="168" class="note">FIXED</text><text x="141" y="183" class="note">WEIGHTS</text>
+<g class="learned" stroke-width="2" fill="none" marker-end="url(#arr-learned)"><path d="M97 164L163 282M130 217L173 282M205 218L184 282M248 165L195 282"/></g>
+<rect x="116" y="287" width="128" height="39" rx="3" fill="var(--paper)" stroke="var(--orange)"/><text x="137" y="312">READOUT</text><text x="244" y="264" class="note">TRAIN THESE</text>
+</svg>
+<figcaption>A schematic. The connections stay put;<br>the values flowing through them keep changing.</figcaption>
+</figure>
+</header>
+<main id="article">
+<div class="intro"><p>Imagine a sensor sending one bit every millisecond. You want to answer a tiny question: <strong>did the bit change since the previous sample?</strong> A <code>0 → 1</code> means yes; a <code>1 → 1</code> means no. Looking only at the current bit cannot tell you which happened. You need memory.</p></div>
+<p>In code, you would save the previous bit and XOR it with the new one. Keep that obvious solution in mind. We are using this toy problem to understand a more general trick: how to learn a function of a stream when you do not already know the rule.</p>
+<p><strong>Reservoir computing feeds the stream into a fixed dynamical system, then trains a simple readout of its changing state.</strong> The system supplies memory and useful transformations; learning decides how to combine them. The standard software version is an <em>echo state network</em>. <sup><a href="#s-jaeger" aria-label="Source 1">[1]</a></sup></p>
+<nav class="route" aria-label="Reading map"><a href="#memory"><span>01 / RETAIN</span>How the past stays present</a><a href="#features"><span>02 / TRANSFORM</span>Why a weighted sum can work</a><a href="#matter"><span>03 / IMPLEMENT</span>Why matter can do the job</a></nav>
+
+<section id="memory"><p class="section-label">01 / A familiar foothold</p><h2>Memory can be a lingering effect</h2>
+<p>A moving average already does something like this. Each sample changes a number; later samples only partly overwrite it. You do not retain an event log, but earlier inputs still affect the present state.</p>
+<div class="equation"><span class="small-label">One simple memory</span>m<sub>t</sub> = 0.5 m<sub>t−1</sub> + 0.5 u<sub>t</sub></div>
+<p>Start at zero. Feed in <code>0, 1</code> and the final average is <code>0.5</code>. Feed in <code>1, 1</code> and it is <code>0.75</code>. Same current input; different state. An earlier event has left a trace.</p>
+<p>Now imagine many state variables, with different responses, feeding into one another. Some react sharply; others preserve earlier activity. Each new sample perturbs the whole collection. This is a <strong>dynamical system</strong>: its next state depends on its current state and its input. “Recurrent network” is the neural-network name for this kind of feedback.</p>
+<p>A reservoir uses the collection as a set of features describing recent history. “High dimensional” just means that instead of one moving average, you can inspect many numbers. Those numbers must preserve distinctions the task needs; a thousand identical averages would add little. The liquid-state-machine formulation makes this separation of histories explicit. <sup><a href="#s-maass" aria-label="Source 2">[2]</a></sup></p>
+</section>
+
+<section id="features"><p class="section-label">02 / The important extra ingredient</p><h2>Memory alone does not buy you XOR</h2>
+<p>Suppose the state generously exposes both the current bit <code>a</code> and previous bit <code>b</code>. Can a weighted sum, <code>c + w₁a + w₂b</code>, produce the answer?</p>
+<table class="truth"><caption>The whole task, plus one useful extra feature</caption><thead><tr><th scope="col">Current a</th><th scope="col">Previous b</th><th scope="col">Product ab</th><th scope="col">Changed?</th></tr></thead><tbody><tr><td>0</td><td>0</td><td>0</td><td>0</td></tr><tr><td>0</td><td>1</td><td>0</td><td>1</td></tr><tr><td>1</td><td>0</td><td>0</td><td>1</td></tr><tr><td>1</td><td>1</td><td>1</td><td>0</td></tr></tbody></table>
+<p>The first row forces <code>c = 0</code>. The next two force both weights to be <code>1</code>. But then the last row produces <code>2</code>, where we need <code>0</code>. Merely adding more linear mixtures of the same inputs cannot fix this: a weighted sum of weighted sums is still a weighted sum.</p>
+<p>The product column changes everything. With the features <code>[a, b, ab]</code>, the answer becomes:</p>
+<div class="equation"><span class="small-label">Nonlinear feature, linear readout</span>changed = 1·a + 1·b − 2·ab</div>
+<p>For <code>1, 1</code>, that is <code>1 + 1 − 2 = 0</code>. For <code>1, 0</code>, it is <code>1 + 0 − 0 = 1</code>. <strong>A linear readout can solve a nonlinear problem if the features have already done the bending.</strong></p>
+<p>A typical reservoir does not explicitly manufacture <code>ab</code>. Its nonlinear responses create a collection of other features of the input history. We hope their combinations can approximate the function we want. That is a testable design choice, not a guarantee that arbitrary randomness will work.</p>
+</section>
+
+<section id="machine"><p class="section-label">03 / The actual machine</p><h2>Freeze the rule. Let the state change.</h2>
+<p>Here is a simple echo state network. Let <code>u</code> be one incoming sample and <code>x</code> the vector of all reservoir values. At each step:</p>
+<div class="equation"><span class="small-label">Fixed state update</span>x<sub>t</sub> = tanh(<span class="frozen">W</span>x<sub>t−1</sub> + <span class="frozen">a</span>u<sub>t</sub> + <span class="frozen">b</span>)<br><span class="small-label" style="margin-top:.9rem">Trained interpretation</span>ŷ<sub>t</sub> = <span class="trained">c</span> + <span class="trained">w</span>·x<sub>t</sub></div>
+<p><code>W</code> mixes the previous state, <code>a</code> distributes the input, and <code>b</code> gives each unit an offset. <code>tanh</code>, applied to each component, is a smooth nonlinear squashing function with outputs between −1 and 1. The readout is just an intercept plus a weighted sum. This is the basic model without optional leakage or output feedback. <sup><a href="#s-jaeger" aria-label="Source 1">[1]</a></sup></p>
+<p>For a tiny numerical example, one unit might compute <code>tanh(0.8u + 0.5x − 0.2)</code>. With input <code>u = 1</code>, previous state <code>x = 0.6</code> gives <code>tanh(0.9) ≈ 0.716</code>. Previous state <code>−0.6</code> gives <code>tanh(0.3) ≈ 0.291</code>. Same weights. Same input. Different answer because of history.</p>
+<p><strong>“Untrained” describes the weights, not the activity.</strong> A classic reservoir chooses its internal weights randomly once, at a sensible scale, and keeps them. Training then looks like ordinary regression: <sup><a href="#s-guide" aria-label="Source 3">[3]</a></sup></p>
+<ol class="fitting"><li>Run a labeled stream through the reservoir.</li><li>Record one row of state values for each target answer.</li><li>Fit the readout weights to those rows, usually with regularized least squares.</li><li>Keep those weights and evaluate on a separate stream.</li></ol>
+<p>There is no backpropagation through the recurrent dynamics in this basic scheme. Size, connectivity, input strength, and memory timescale still need selection. You have made the fitting problem simpler; you have not eliminated model design. <sup><a href="#s-guide" aria-label="Source 3">[3]</a></sup></p>
+
+<div class="experiment wide" id="experiment">
+<p class="small-label">Live experiment / runs in this page</p><h3>Take away one ingredient</h3>
+<p>A 24-unit reservoir learns the bit-change task. Switch models: each gets its own freshly fitted readout, using the same training stream. Only the internal update rule changes.</p>
+<div class="modes" role="group" aria-label="Reservoir model"><button type="button" data-mode="full" aria-pressed="true">Memory + nonlinearity</button><button type="button" data-mode="memoryless" aria-pressed="false">Remove memory</button><button type="button" data-mode="linear" aria-pressed="false">Remove nonlinearity</button></div>
+<div class="results" aria-live="polite" aria-atomic="true"><div><span id="accuracy" class="number">100.0%</span><span class="caption">Correct on 512 held-out samples</span></div><div><span id="mse" class="number">0.00017</span><span class="caption">Mean squared error · lower is better</span></div></div>
+<p class="result-note" id="result-note">Both ingredients are present. The fixed reservoir supplies features from which the fitted readout recovers the bit-change rule on this test stream.</p>
+<p class="small-label">Inspect one step of that same computation</p>
+<div id="input-strip" class="input-strip" aria-label="Input sequence"></div><div class="key"><span>Current input</span><span>Previous input</span></div>
+<svg id="state-chart" class="state-chart" viewBox="0 0 600 165" role="img" aria-label="24 reservoir state values at the selected step"></svg>
+<div class="trace-controls"><button id="prev" type="button">← Previous step</button><output id="step-label">Sample 2 of 12</output><button id="next" type="button">Next step →</button></div>
+<p id="step-readout" class="step-readout" aria-live="polite">The state and weighted readout appear here when JavaScript runs.</p>
+<p>Step forward and watch the state bars. With memory removed, every <code>1</code> produces the same state, regardless of what preceded it. With nonlinearity removed, history survives, but the readout remains a linear function of it.</p>
+<details class="method"><summary>What exactly is being computed?</summary><p>A seeded, illustrative simulation, not a hardware benchmark. Each of 24 units has four random incoming connections; each row of <code>W</code> has absolute weights summing to 0.8. Input weights lie in [−1.5, 1.5], biases in [−0.8, 0.8]. These choices are fixed across modes.</p><p>Independent seeded binary streams provide 1,024 training and 512 test examples, after 64 warm-up steps each. Ridge regression minimizes the sum of squared errors plus <code>0.01‖w‖²</code>; the intercept is unpenalized. Scores ≥ 0.5 count as “changed.” Scores are not probabilities. The trace shows the first 12 test inputs after warm-up.</p><p>“Remove memory” sets <code>W = 0</code>. “Remove nonlinearity” replaces <code>tanh(z)</code> with <code>z</code>; it keeps every connection. The plot uses a fixed −2.5 to +2.5 scale for all modes. This tiny known rule is deliberately easy: storing one bit and XORing it would solve it exactly with much less work.</p></details>
+<noscript><p>The article is complete without JavaScript. In the seeded experiment, the full model gets 512/512 answers correct; removing either ingredient gives 263/512. Enable JavaScript to inspect the changing states.</p></noscript>
+</div>
+<p>The experiment does not prove reservoirs are universally good. It makes the division of labor visible: <strong>the reservoir creates the representation; the readout learns the task.</strong></p>
+</section>
+
+<section id="forget"><p class="section-label">04 / A useful constraint</p><h2>It must forget the right things</h2>
+<p>A reservoir should remember relevant recent input while eventually forgetting how it was initialized. Run two copies from different starting states, feed them the same long input, and their states should converge. This is the intuition behind the <strong>echo state property</strong>. It concerns dependence on input history, not convergence to a motionless state. <sup><a href="#s-jaeger" aria-label="Source 1">[1]</a></sup></p>
+<p>Forgetting too quickly loses the previous bit. Letting irrelevant history or unstable dynamics dominate makes the readout's job harder. The useful timescale depends on the task. Our one-step question is forgiving; remembering a cue across thousands of unrelated samples is a different demand. A reservoir is a fading trace, not an addressable log. <sup><a href="#s-guide" aria-label="Source 3">[3]</a></sup></p>
+</section>
+
+<section id="matter"><p class="section-label">05 / Now the materials connection makes sense</p><h2>The state does not have to live in RAM</h2>
+<p>So far, software has updated an array. But a physical system can also respond nonlinearly and retain effects of earlier inputs. Apply voltage pulses to a suitable device; measure its changing response; train a readout on those measurements. The material's dynamics perform the feature transformation. Physical reservoirs have been explored with electronic, optical, and other substrates. <sup><a href="#s-review" aria-label="Source 4">[4]</a></sup></p>
+<p>For a concrete example, Du and colleagues used dynamic <strong>memristors</strong>: devices whose resistance depends on their stimulation history. Closely spaced pulses accumulated a response; during a gap, it decayed. Their experiment used those transient states as reservoir features and implemented the readout in software. The memory was a physical relaxation process. <sup><a href="#s-du" aria-label="Source 5">[5]</a></sup></p>
+<p>This is why the idea attracts hardware researchers. You may be able to obtain useful computation from dynamics a device already has, without individually programming every internal connection.</p>
+<aside class="aside"><p><strong>The engineering question:</strong> does the complete system beat a sensible digital baseline at the same task and accuracy? Count input encoding, sampling, conversion, readout, calibration, and drift. A cheap physical response is one component of that bill. This is a systems test to demand, not a performance claim about every reservoir.</p></aside>
+</section>
+
+<section id="map"><p class="section-label">06 / Put it on the map</p><h2>Four connections to keep</h2>
+<dl class="map"><div class="map-row"><dt>Streaming algorithms</dt><dd>Both carry state forward. A reservoir's state is a distributed trace of history, rather than a hand-designed sufficient statistic.</dd></div><div class="map-row"><dt>Linear regression</dt><dd>The final learner can be ordinary regression. The nonlinear temporal computation has already happened in the features.</dd></div><div class="map-row"><dt>Recurrent networks</dt><dd>An echo state network is an RNN with its recurrent weights held fixed during readout fitting. “Reservoir computing” names the broader approach.</dd></div><div class="map-row"><dt>Physical computing</dt><dd>The same interface—input, evolving state, readout—can be realized by material dynamics. Useful memory and measurable features are the requirements.</dd></div></dl>
+<p>In the literature, <em>echo state networks</em> usually mean the software-style recurrent networks we just built; <em>liquid state machines</em> originated with recurrent spiking circuits. Both helped establish the reservoir idea. <sup><a href="#s-jaeger" aria-label="Source 1">[1]</a></sup> <sup><a href="#s-maass" aria-label="Source 2">[2]</a></sup></p>
+<p class="takeaway">You do not have to teach every part of a machine its job. Sometimes you can find a machine whose natural responses preserve what you need, and learn how to read them.</p>
+<p>For the next concrete step, read Lukoševičius's <a href="https://mantas.info/code/simple_esn/">minimal echo state network implementation</a>. You now know what each part is buying: the recurrence buys history, the nonlinear response supplies features, and the regression fits their interpretation.</p>
+</section>
+
+<footer><h2>Sources &amp; next reading</h2>
+<ol><li id="s-jaeger">Herbert Jaeger, <a href="https://www.ai.rug.nl/minds/uploads/EchoStatesTechRep.pdf">The “echo state” approach to analysing and training recurrent neural networks</a> (2001; corrected report). The original ESN model and echo state property.</li><li id="s-maass">Wolfgang Maass, Thomas Natschläger &amp; Henry Markram, <a href="https://www.lsm.tugraz.at/papers/lsm-nc-130.pdf">Real-Time Computing Without Stable States</a> (2002). Transient state, separation of input histories, and readout.</li><li id="s-guide">Mantas Lukoševičius, <a href="https://www.ai.rug.nl/minds/uploads/PracticalESN.pdf">A Practical Guide to Applying Echo State Networks</a> (2012). A useful next technical read: fitting, initialization, and parameter choices.</li><li id="s-review">Gouhei Tanaka et al., <a href="https://arxiv.org/abs/1808.04962">Recent Advances in Physical Reservoir Computing: A Review</a> (2019). The broader landscape of physical implementations.</li><li id="s-du">Chao Du et al., <a href="https://www.nature.com/articles/s41467-017-02337-y">Reservoir computing using dynamic memristors for temporal information processing</a> (2017). A concrete experimental implementation.</li></ol>
+<p class="colophon">The bit task, worked arithmetic, and browser experiment are illustrative constructions for this article. The experiment computes its results locally; there are no external scripts or services. Explanatory design informed by Bret Victor's <a href="https://worrydream.com/ExplorableExplanations/">Explorable Explanations</a>: keep the experiment inside the argument.</p>
+<p><a href="index.html">← Back to the reading archive</a></p></footer>
+</main>
+<script>
+function rng(seed) {
+  return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+const N = 24;
+function makeReservoir() {
+  const rand = rng(2911), W = [], a = [], b = [];
+  for (let i = 0; i < N; i++) {
+    a.push((rand() * 2 - 1) * 1.5); b.push((rand() * 2 - 1) * .8);
+    const row = Array(N).fill(0);
+    while (row.filter(v => v !== 0).length < 4) { const j = Math.floor(rand() * N); row[j] = rand() * 2 - 1; }
+    const scale = .8 / row.reduce((s, v) => s + Math.abs(v), 0);
+    W.push(row.map(v => v * scale));
+  }
+  return {W, a, b};
+}
+const reservoir = makeReservoir();
+function step(x, u, mode = 'full') {
+  return reservoir.W.map((row, i) => {
+    const z = reservoir.a[i] * u + reservoir.b[i] + (mode === 'memoryless' ? 0 : row.reduce((s, w, j) => s + w * x[j], 0));
+    return mode === 'linear' ? z : Math.tanh(z);
+  });
+}
+function sequence(seed, length) { const r = rng(seed); return Array.from({length}, () => Number(r() > .5)); }
+function collect(bits, mode) {
+  let x = Array(N).fill(0); const rows = [], targets = [];
+  bits.forEach((u, t) => { x = step(x, u, mode); if(t >= 64) { rows.push([1, ...x]); targets.push(u ^ bits[t-1]); } });
+  return {rows, targets};
+}
+function solve(A, b) {
+  const n = b.length, m = A.map((r, i) => [...r, b[i]]);
+  for (let j = 0; j < n; j++) {
+    let best = j;
+    for (let k = j+1; k<n; k++) if(Math.abs(m[k][j])>Math.abs(m[best][j])) best = k;
+    [m[j],m[best]]=[m[best],m[j]];
+    if(Math.abs(m[j][j])<1e-14) throw Error('Singular readout fit');
+    const d=m[j][j]; for(let k=j;k<=n;k++) m[j][k]/=d;
+    for(let i=0;i<n;i++) if(i!==j){const f=m[i][j];for(let k=j;k<=n;k++)m[i][k]-=f*m[j][k];}
+  }
+  return m.map(r=>r[n]);
+}
+function dot(x,w) { return x.reduce((s,v,i)=>s+v*w[i],0); }
+function fit(mode) {
+  const train = collect(sequence(1001,1088),mode), test = collect(sequence(2002,576),mode), dim=N+1;
+  const A=Array.from({length:dim},()=>Array(dim).fill(0)),b=Array(dim).fill(0);
+  train.rows.forEach((r,t)=>{ for(let i=0;i<dim;i++){ b[i]+=r[i]*train.targets[t];for(let j=0;j<dim;j++) A[i][j]+=r[i]*r[j]; }});
+  for(let i=1;i<dim;i++) A[i][i]+=.01;
+  const w=solve(A,b), predictions=test.rows.map(r=>dot(r,w));
+  const mse=predictions.reduce((s,p,i)=>s+(p-test.targets[i])**2,0)/predictions.length;
+  const correct=predictions.filter((p,i)=>Number(p>=.5)===test.targets[i]).length;
+  return {w,mse,correct,total:predictions.length,predictions};
+}
+if(typeof module!=='undefined') module.exports={rng,N,reservoir,step,sequence,collect,dot,fit};
+if (typeof document !== 'undefined') {
+  const $ = id => document.getElementById(id);
+  const themeButton = $('theme');
+  let savedTheme; try { savedTheme = localStorage.getItem('notes-reservoir-theme'); } catch {}
+  const dark = savedTheme ? savedTheme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  function setTheme(dark) {
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    themeButton.textContent = dark ? 'Light mode' : 'Dark mode';
+    themeButton.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+  }
+  setTheme(dark);
+  themeButton.addEventListener('click', () => {
+    const dark = document.documentElement.dataset.theme !== 'dark';
+    setTheme(dark); try { localStorage.setItem('notes-reservoir-theme',dark ? 'dark' : 'light'); } catch {}
+  });
+  const models = Object.fromEntries(['full','memoryless','linear'].map(m => [m,fit(m)]));
+  const testBits = sequence(2002,576), traceBits = testBits.slice(64,76);
+  const traces = Object.fromEntries(['full','memoryless','linear'].map(m => [m,collect(testBits,m).rows.slice(0,12)]));
+  let mode = 'full', current = 1;
+  const explanations = {
+    full:'Both ingredients are present. The fixed reservoir supplies features from which the fitted readout recovers the bit-change rule on this test stream.',
+    memoryless:'Only the current bit survives. The best readout cannot recover an independent previous bit that never reached its features. Test error stays near 0.25, the error of always guessing a score of 0.5.',
+    linear:'History survives, but all features and their readout are linear mixtures. They cannot represent XOR exactly. Least-squares fitting gives scores near 0.5 and error near 0.25 on this stream.'
+  };
+  function signed(v) { return (v < 0 ? '−' : '+') + Math.abs(v).toFixed(3); }
+  function renderTrace() {
+    const values = traces[mode][current].slice(1), prevBit = testBits[64+current-1], bit = traceBits[current], answer = bit ^ prevBit;
+    $('input-strip').replaceChildren(...traceBits.map((b,i) => {
+      const cell = document.createElement('span');
+      cell.className = 'bit' + (i === current ? ' current' : i === current-1 ? ' previous' : '');
+      cell.textContent = b;
+      cell.setAttribute('aria-label',`Sample ${i+1}: ${b}${i === current ? ', current input' : i === current-1 ? ', previous input' : ''}`);
+      return cell;
+    }));
+    const ns = 'http://www.w3.org/2000/svg', chart = $('state-chart');
+    chart.replaceChildren();
+    const width = Math.max(300, Math.round(chart.getBoundingClientRect().width));
+    chart.setAttribute('viewBox', `0 0 ${width} 190`);
+    function svg(tag,attrs,text) {
+      const el = document.createElementNS(ns,tag);
+      Object.entries(attrs).forEach(([k,v]) => el.setAttribute(k,String(v)));
+      if(text !== undefined) el.textContent = text;
+      chart.append(el); return el;
+    }
+    svg('title',{},'Reservoir state: 24 values after processing the current input');
+    svg('desc',{},`Model ${mode}. State vector: ${values.map(v=>v.toFixed(3)).join(', ')}.`);
+    const zero = 90, scale = 26;
+    for(const tick of [-2.5,0,2.5]) {
+      const y = zero - scale*tick;
+      svg('line',{x1:42,x2:width-4,y1:y,y2:y,class:'axis'});
+      svg('text',{x:34,y:y+4,'text-anchor':'end'},String(tick));
+    }
+    values.forEach((v,i) => {
+      const pitch = (width-50)/24, h = Math.max(.7,Math.abs(v)*scale), x = 46 + i*pitch;
+      const bar = svg('rect',{x,y:v>=0 ? zero-h : zero,width:pitch*.68,height:h,class:'state-bar'+(v<0?' negative':'')});
+      const title = document.createElementNS(ns,'title'); title.textContent=`Unit ${i+1}: ${v.toFixed(3)}`; bar.append(title);
+    });
+    svg('text',{x:45,y:182},'UNIT 1'); svg('text',{x:width-5,y:182,'text-anchor':'end'},'UNIT 24');
+    const m=models[mode], sum=dot(values,m.w.slice(1)),score=m.w[0]+sum;
+    $('step-label').textContent=`Sample ${current+1} of 12`;
+    $('prev').disabled = current===0; $('next').disabled = current===11;
+    $('step-readout').replaceChildren();
+    const first=document.createElement('span'), second=document.createElement('span'), third=document.createElement('span');
+    first.textContent=`Previous ${prevBit} → current ${bit}: target ${answer}.`;
+    second.textContent=`c: ${m.w[0].toFixed(3)}; w·x: ${signed(sum)}.`;
+    third.textContent=`Score: ${score.toFixed(3)} → decision: ${Number(score>=.5)}.`;
+    $('step-readout').append(first,document.createElement('br'),second,document.createElement('br'),third);
+  }
+  function render() {
+    const m=models[mode];
+    $('accuracy').textContent=(100*m.correct/m.total).toFixed(1)+'%';
+    $('mse').textContent=m.mse.toFixed(5);
+    $('result-note').textContent=explanations[mode];
+    document.querySelectorAll('[data-mode]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.mode===mode)));
+    renderTrace();
+  }
+  document.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',()=>{mode=button.dataset.mode;render();}));
+  $('prev').addEventListener('click',()=>{if(current>0){current--;renderTrace();}});
+  $('next').addEventListener('click',()=>{if(current<11){current++;renderTrace();}});
+  window.addEventListener('resize',renderTrace);
+  render();
+}
+
+</script>
+</body>
+</html>
