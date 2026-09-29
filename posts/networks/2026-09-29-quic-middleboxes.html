@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Who owns a QUIC connection?</title>
+<meta name="description" content="A five-minute mental model for QUIC, firewalls, NAT, CGNAT, connection IDs, and migration.">
+<style>
+  :root {
+    color-scheme: light dark;
+    --accent: #c4623d;
+    --muted: color-mix(in srgb, currentColor 62%, transparent);
+    --line: color-mix(in srgb, currentColor 14%, transparent);
+    --panel: color-mix(in srgb, currentColor 5%, transparent);
+    --code: color-mix(in srgb, currentColor 8%, transparent);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font: 17px/1.65 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  main { max-width: 46rem; margin: 0 auto; padding: 3.5rem 1.25rem 5rem; }
+  a { color: inherit; text-decoration-color: var(--accent); text-underline-offset: .18em; }
+  .eyebrow { color: var(--accent); font: 700 .76rem/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .09em; text-transform: uppercase; }
+  h1 { font-size: clamp(2.2rem, 7vw, 4.25rem); line-height: .98; letter-spacing: -.045em; margin: .55rem 0 1rem; max-width: 12ch; }
+  .deck { font-size: 1.2rem; line-height: 1.5; color: var(--muted); max-width: 36rem; margin-bottom: 2.2rem; }
+  h2 { font-size: 1.45rem; line-height: 1.2; letter-spacing: -.02em; margin: 3.2rem 0 1rem; }
+  p { margin: .9rem 0; }
+  strong { font-weight: 750; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  code { font-size: .9em; background: var(--code); padding: .08em .32em; border-radius: .3rem; }
+  pre {
+    background: var(--code);
+    border: 1px solid var(--line);
+    border-radius: .8rem;
+    padding: 1rem;
+    overflow-x: auto;
+    font-size: .82rem;
+    line-height: 1.5;
+  }
+  .answer {
+    border-left: 3px solid var(--accent);
+    padding: .15rem 0 .15rem 1rem;
+    margin: 2rem 0 2.6rem;
+    font-size: 1.08rem;
+  }
+  .diagram {
+    margin: 1.4rem 0;
+    padding: 1rem;
+    border: 1px solid var(--line);
+    border-radius: 1rem;
+    background: var(--panel);
+  }
+  .hop {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: .6rem;
+    align-items: center;
+    margin: .5rem 0;
+  }
+  .box {
+    border: 1px solid var(--line);
+    border-radius: .7rem;
+    padding: .65rem .75rem;
+    min-width: 0;
+  }
+  .box b { display: block; font-size: .9rem; }
+  .box span { display: block; color: var(--muted); font: .78rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+  .arrow { color: var(--accent); font-weight: 800; }
+  .callout {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: .9rem;
+    padding: 1rem 1.1rem;
+    margin: 1.25rem 0;
+  }
+  .callout p:first-child { margin-top: 0; }
+  .callout p:last-child { margin-bottom: 0; }
+  table { width: 100%; border-collapse: collapse; margin: 1.4rem 0; font-size: .92rem; }
+  th, td { text-align: left; vertical-align: top; padding: .65rem .55rem; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; }
+  .small { color: var(--muted); font-size: .88rem; }
+  .sources { margin-top: 3.5rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .86rem; }
+  @media (max-width: 560px) {
+    main { padding-top: 2.3rem; }
+    .hop { grid-template-columns: 1fr; }
+    .arrow { transform: rotate(90deg); justify-self: center; }
+    table { font-size: .82rem; }
+    th, td { padding: .55rem .35rem; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Computer Networks · ~5 min</div>
+  <h1>Who owns a QUIC connection?</h1>
+  <p class="deck">A mental model for QUIC through firewalls, NAT, and CGNAT — and the precise sense in which the network does, and does not, see a “connection.”</p>
+
+  <div class="answer">
+    <strong>The one sentence:</strong> QUIC has rich connection state, but that state belongs to the endpoints. The middle of the network mostly sees a bidirectional UDP flow and keeps whatever mapping/filtering state it needs to forward those datagrams.
+  </div>
+
+  <h2>Start with the thing that feels weird</h2>
+
+  <p>You open an HTTP/3 connection from your laptop to a server. QUIC normally rides over UDP, commonly to port 443. From an ordinary router's perspective, these are simply unicast IP packets going one way and unicast IP packets coming back.</p>
+
+  <pre>laptop:53124  ───── UDP/443 ─────▶  server:443
+             ◀───── UDP/443 ─────</pre>
+
+  <p>So yes: <strong>it is unicast in both directions.</strong> There is no magical broadcast or side channel. The interesting part is what each box along the path knows about those packets.</p>
+
+  <h2>TCP trained us to conflate two different kinds of state</h2>
+
+  <p>With TCP, the endpoints have transport state: sequence numbers, receive windows, retransmissions, congestion control, and so on. But a firewall can also watch the network-visible TCP state machine:</p>
+
+  <pre>SYN  →  SYN-ACK  →  ACK  →  ...data...  →  FIN / RST</pre>
+
+  <p>That makes it tempting to think a NAT “understands the connection.” In reality, a NAT's essential job is simpler: <strong>remember an address/port translation long enough to send reply packets back to the correct internal host.</strong></p>
+
+  <h2>Now replace TCP with QUIC</h2>
+
+  <p>QUIC implements reliability, streams, loss recovery, congestion control, connection setup, and migration above UDP. Most of that protocol machinery is encrypted from the network.</p>
+
+  <table>
+    <thead><tr><th>Endpoints know</th><th>Middleboxes can usually observe</th></tr></thead>
+    <tbody>
+      <tr><td>streams and stream state</td><td>source/destination IP + UDP ports</td></tr>
+      <tr><td>ACK frames and loss recovery</td><td>packet sizes and timing</td></tr>
+      <tr><td>flow control</td><td>some QUIC header information</td></tr>
+      <tr><td>congestion-control state</td><td>enough of setup to identify/track QUIC in some devices</td></tr>
+      <tr><td>logical connection lifetime</td><td>no TCP-like visible FIN/RST end signal</td></tr>
+    </tbody>
+  </table>
+
+  <p>That last row is the big one. A stateful firewall can still say “I have recently seen traffic belonging to this UDP/QUIC flow,” but it does not get the same exposed transport state machine that TCP gives it.</p>
+
+  <div class="callout">
+    <p><strong>So “QUIC is stateless to the network” is wrong.</strong></p>
+    <p>A better sentence is: <strong>the network's state is mostly forwarding/filtering state, while QUIC's semantic transport state stays at the endpoints.</strong></p>
+  </div>
+
+  <h2>What a NAT — including CGNAT — actually does</h2>
+
+  <p>Suppose your laptop sends this:</p>
+
+  <pre>10.0.0.5:53124  →  server.example:443</pre>
+
+  <p>Your home NAT might allocate an outside mapping:</p>
+
+  <pre>10.0.0.5:53124  ↔  100.64.12.8:40011</pre>
+
+  <p>Then your ISP's carrier-grade NAT can do it again:</p>
+
+  <pre>100.64.12.8:40011  ↔  198.51.100.27:62001</pre>
+
+  <div class="diagram">
+    <div class="hop">
+      <div class="box"><b>Laptop</b><span>10.0.0.5:53124</span></div>
+      <div class="arrow">→</div>
+      <div class="box"><b>Home NAT</b><span>100.64.12.8:40011</span></div>
+    </div>
+    <div class="hop">
+      <div class="box"><b>Home NAT</b><span>100.64.12.8:40011</span></div>
+      <div class="arrow">→</div>
+      <div class="box"><b>CGNAT</b><span>198.51.100.27:62001</span></div>
+    </div>
+    <div class="hop">
+      <div class="box"><b>CGNAT</b><span>198.51.100.27:62001</span></div>
+      <div class="arrow">→</div>
+      <div class="box"><b>Server</b><span>server.example:443</span></div>
+    </div>
+  </div>
+
+  <p>When the server replies to <code>198.51.100.27:62001</code>, the CGNAT consults its mapping and sends the packet inward. The home NAT does the same thing again.</p>
+
+  <p><strong>Nothing about this requires the NAT to understand QUIC.</strong> Ordinary stateful UDP NAT behavior is enough.</p>
+
+  <h2>But how does the NAT know when the “connection” ends?</h2>
+
+  <p>It doesn't, in the QUIC sense.</p>
+
+  <p>TCP gives a middlebox explicit FIN/RST signals. QUIC intentionally does not expose a comparable end-of-flow signal. So NAT/firewall mappings are generally aged out with an inactivity timer or resource-pressure policy.</p>
+
+  <pre>packet arrives
+     ↓
+refresh UDP mapping timer
+     ↓
+more packets? ── yes ──▶ keep mapping
+     │
+     no
+     ↓
+timeout → forget mapping</pre>
+
+  <p>This is why long-idle UDP-based protocols have to care about middlebox timeout behavior. The IETF's UDP NAT guidance specifies timers, but real deployed boxes are not perfectly uniform.</p>
+
+  <h2>The payoff: QUIC does not define the connection by the 4-tuple</h2>
+
+  <p>A conventional TCP connection is strongly tied to:</p>
+
+  <pre>(source IP, source port, destination IP, destination port)</pre>
+
+  <p>QUIC instead gives endpoints <strong>Connection IDs</strong>. That lets the server recognize the logical QUIC connection even if the network path changes.</p>
+
+  <p>Imagine your NAT forgets a mapping and allocates a new source port:</p>
+
+  <pre>before: 198.51.100.27:62001 → server:443
+after:  198.51.100.27:48192 → server:443</pre>
+
+  <p>To the NAT, this can simply look like a new UDP mapping. To the QUIC endpoint, a Connection ID can say: <strong>same logical connection, new path.</strong> The endpoint then validates that new path before fully trusting it.</p>
+
+  <p>The same machinery is what makes client migration possible when, say, a phone moves from Wi-Fi to cellular.</p>
+
+  <div class="callout">
+    <p><strong>This is the clean architectural split:</strong></p>
+    <p><strong>NAT identity:</strong> “Which internal socket should receive packets sent to this external address/port?”</p>
+    <p><strong>QUIC identity:</strong> “Which logical transport connection does this packet belong to?”</p>
+  </div>
+
+  <h2>So what can a firewall still do?</h2>
+
+  <p>Plenty. It can allow or block UDP/443, rate-limit traffic, keep per-flow state, and in more QUIC-aware deployments identify QUIC/version/handshake characteristics. It can also simply refuse UDP, in which case an application such as a browser may choose another transport such as HTTP/2 over TCP.</p>
+
+  <p>But QUIC was deliberately designed so that arbitrary middleboxes do <em>not</em> get to depend on lots of transport internals. TCP accumulated decades of boxes that inspected and modified visible details; that made protocol evolution brittle. QUIC encrypts most transport metadata partly to avoid repeating that ossification.</p>
+
+  <h2>The mental model to keep</h2>
+
+  <pre>                  TCP                         QUIC
+             ─────────────               ─────────────
+endpoint     rich TCP state              rich QUIC state
+
+middlebox    mapping/filter state        mapping/filter state
+             + visible TCP semantics     + limited QUIC visibility
+
+identity     usually 4-tuple             Connection ID at endpoints
+
+ending       FIN/RST visible             no comparable visible end signal
+
+path change  usually kills connection    can survive via migration</pre>
+
+  <p>So when you ask, “there is no connection state like TCP that a router/NAT can see, right?” the precise answer is:</p>
+
+  <p><strong>A plain router never needed transport connection state. A NAT/firewall still keeps state for the UDP flow. What QUIC removes from the middlebox is most of the transport's meaningful internal state machine — while preserving enough network-visible information for packets to get through.</strong></p>
+
+  <div class="sources">
+    <strong>Primary references:</strong>
+    <a href="https://www.rfc-editor.org/rfc/rfc9000.html">RFC 9000 — QUIC</a>,
+    <a href="https://www.rfc-editor.org/rfc/rfc9312.html">RFC 9312 — Manageability of QUIC</a>,
+    <a href="https://www.rfc-editor.org/rfc/rfc4787.html">RFC 4787 — NAT behavior for unicast UDP</a>.
+  </div>
+</main>
+</body>
+</html>
