@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f3efe5">
+  <meta name="description" content="A 16-slide reading and discussion of The Art of Doing Science and Engineering, Chapter 4: A History of Software.">
+  <title>A History of Software · The Art of Doing Science and Engineering</title>
+  <link rel="preload" href="assets/libre-caslon-400.woff" as="font" type="font/woff" crossorigin>
+  <link rel="preload" href="assets/dm-sans-400.woff" as="font" type="font/woff" crossorigin>
+  <link rel="stylesheet" href="deck.css">
+  <script src="deck.js" defer></script>
+</head>
+<body data-mode="read">
+  <header class="toolbar" aria-label="Presentation controls">
+    <a class="back" href="../../index.html" aria-label="Back to notes">← <span>notes</span></a>
+    <span class="deck-label">A History of Software</span>
+    <div class="tools">
+      <button id="overview-button" title="Slide overview (O)" aria-haspopup="dialog">Overview</button>
+      <button id="mode-button" title="Toggle reading view (R)">Present</button>
+      <button id="fullscreen-button" title="Fullscreen (F)">Fullscreen</button>
+      <button id="help-button" class="help-button" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">?</button>
+    </div>
+  </header>
+
+  <main id="stage" class="stage" aria-label="A History of Software presentation">
+    <section id="slide-1" class="slide cover" data-title="The Art of Doing Science and Engineering" aria-labelledby="title-1">
+      <div class="slide-content cover-copy">
+        <h1 id="title-1" class="reveal">The Art of Doing Science and Engineering</h1>
+        <p class="cover-subtitle reveal" style="--delay:160ms">Ch. 4 - A History of Software</p>
+      </div>
+      <img class="art cover-art reveal" style="--delay:80ms" src="assets/title.webp" width="1536" height="1024" alt="The pocket terminal beside an early computing machine." fetchpriority="high">
+    </section>
+
+    <section id="slide-2" class="slide thoughts" data-title="Thoughts and Structure" aria-labelledby="title-2">
+      <h2 id="title-2" class="section-title">Thoughts and Structure</h2>
+      <div class="slide-content">
+        <ul class="statement-list">
+          <li class="reveal">Amazingly prescient commentary.</li>
+          <li class="reveal" style="--delay:140ms">A lot of <em>controversial takes!</em></li>
+          <li class="reveal" style="--delay:280ms">Longer chapter, lot of topics highly relevant.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="slide-3" class="slide thoughts approach" data-title="Thoughts and Structure" aria-labelledby="title-3">
+      <h2 id="title-3" class="section-title">Thoughts and Structure</h2>
+      <div class="slide-content">
+        <ul class="statement-list">
+          <li class="reveal">Quotes worth discussing</li>
+          <li class="reveal" style="--delay:180ms">Some commentary on top</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="slide-4" class="slide single-quote binary" data-title="A Progression from Binary to Compilers" aria-labelledby="title-4">
+      <h2 id="title-4" class="section-title">A Progression from Binary to Compilers</h2>
+      <div class="slide-content">
+        <blockquote class="quote reveal">“In the beginning we programmed in <em>absolute binary</em>, meaning we wrote the actual address where things were in binary, and wrote the instruction part also in binary!”</blockquote>
+      </div>
+    </section>
+
+    <section id="slide-5" class="slide quote-notes patching" data-title="A Progression from Binary to Compilers" aria-labelledby="title-5">
+      <h2 id="title-5" class="section-title">A Progression from Binary to Compilers</h2>
+      <div class="slide-content">
+        <blockquote class="quote reveal">“If [you] wanted to insert some omitted instructions, then you took the immediately preceding instruction and replaced it by a transfer to some empty space. There you put in the instruction you just wrote over, added the instructions you wanted to insert, followed by a transfer back to the main program”</blockquote>
+        <ul class="notes">
+          <li class="reveal" style="--delay:200ms">Monolithic Programs -&gt; Procedures -&gt; Functions</li>
+          <li class="reveal" style="--delay:330ms">Composability as a general catalyst to emergence</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="slide-6" class="slide quote-notes symbols" data-title="A Progression from Binary to Compilers" aria-labelledby="title-6">
+      <h2 id="title-6" class="section-title">A Progression from Binary to Compilers</h2>
+      <div class="slide-content">
+        <blockquote class="quote reveal">“Someone got the idea a short piece of program could be written which would read in the symbolic names of the operations (like <span class="code accent">ADD</span>) and translate them at input time to the binary representations used inside the machine (say <span class="code accent">01100101</span>).”</blockquote>
+        <ul class="notes"><li class="reveal" style="--delay:220ms">Symbolic Addresses -&gt; registers! Stack vars!</li></ul>
+      </div>
+    </section>
+
+    <section id="slide-7" class="slide single-quote storage" data-title="A Progression from Binary to Compilers" aria-labelledby="title-7">
+      <h2 id="title-7" class="section-title">A Progression from Binary to Compilers</h2>
+      <div class="slide-content">
+        <blockquote class="quote">
+          <p class="reveal">“One of the main complaints was when using a symbolic system you didn’t know where anything was in storage</p>
+          <p class="reveal" style="--delay:280ms">Rather than realize they <em>did not need to know that information</em> if they stuck to operating within the system”</p>
+        </blockquote>
+      </div>
+    </section>
+
+    <section id="slide-8" class="slide vm" data-title="A Progression from Binary to Compilers" data-pair="vm" aria-labelledby="title-8">
+      <h2 id="title-8" class="section-title">A Progression from Binary to Compilers</h2>
+      <div class="slide-content">
+        <blockquote class="quote reveal" data-persist="vm-quote">“When, and only when, you have a totally virtual machine will you have the ability to transfer software from one machine to another without almost endless trouble and errors.”</blockquote>
+        <p class="prompt reveal" data-persist="vm-prompt" style="--delay:160ms">What are some super successful “virtual machines” we know now!</p>
+        <ul class="vm-list">
+          <li class="reveal" data-persist="vm-java" style="--delay:250ms">Java and the JVM</li>
+          <li class="reveal" data-persist="vm-llvm" style="--delay:340ms">LLVM</li>
+          <li class="reveal vm-more" style="--delay:430ms">What else?</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="slide-9" class="slide vm" data-title="So Many VMs" data-pair="vm" aria-labelledby="title-9">
+      <h2 id="title-9" class="section-title">So Many VMs</h2>
+      <div class="slide-content">
+        <blockquote class="quote reveal" data-persist="vm-quote">“When, and only when, you have a totally virtual machine will you have the ability to transfer software from one machine to another without almost endless trouble and errors.”</blockquote>
+        <p class="prompt reveal" data-persist="vm-prompt" style="--delay:160ms">What are some super successful “virtual machines” we know now!</p>
+        <ul class="vm-list">
+          <li class="reveal" data-persist="vm-java" style="--delay:200ms">Java and the JVM</li>
+          <li class="reveal" data-persist="vm-llvm" style="--delay:250ms">LLVM</li>
+          <li class="reveal" style="--delay:80ms">Browsers and the JS Engines</li>
+          <li class="reveal" style="--delay:200ms">Ethereum and the EVM</li>
+          <li class="reveal" style="--delay:320ms">Python and the PyVM!</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="slide-10" class="slide thought-gap" data-title="So Many VMs" aria-labelledby="title-10">
+      <h2 id="title-10" class="section-title">So Many VMs</h2>
+      <div class="slide-content">
+        <p class="thought reveal">Closing the seemingly infinite gap between the language of <em>our thoughts</em> and the language of the <em>machine’s thoughts.</em></p>
+        <p class="question reveal" style="--delay:300ms"><span class="question-label">Question:</span> Is the gap between thought and code a limitation of our languages, or of how clearly we know what we want?</p>
+      </div>
+    </section>
+
+    <section id="slide-11" class="slide trust" data-title="So Many VMs" data-theme="dark" aria-labelledby="title-11">
+      <h2 id="title-11" class="section-title">So Many VMs</h2>
+      <div class="slide-content trust-copy">
+        <p class="thought reveal">Closing the seemingly infinite gap between the language of our thoughts and the language of the machine’s thoughts.</p>
+        <p class="question reveal" style="--delay:100ms"><span class="question-label">Question:</span> Is the gap between thought and code a limitation of our languages, or of how clearly we know what we want?</p>
+        <p class="recommendation reveal" style="--delay:240ms">Urge to read <em>Trusting Trust</em> by Ken Thompson</p>
+        <blockquote class="quote reveal" style="--delay:360ms">“To what extent should one trust a statement that a program is free of Trojan horses? Perhaps it is more important to trust <em>the people who wrote the software.</em>”</blockquote>
+      </div>
+      <img class="art trust-art reveal" style="--delay:120ms" src="assets/trust.webp" width="1254" height="1254" alt="The pocket terminal inspects a machine containing a wooden Trojan horse." loading="lazy">
+    </section>
+
+    <section id="slide-12" class="slide standardization" data-title="So Many VMs" aria-labelledby="title-12">
+      <h2 id="title-12" class="section-title">So Many VMs</h2>
+      <div class="slide-content">
+        <p class="standard-lead reveal">We yearn for standardization.</p>
+        <p class="standard-sub reveal" style="--delay:90ms">Uncertainty reduction as a fundamental labor of the human condition.</p>
+        <p class="standard-turn reveal" style="--delay:230ms">But not too much right?</p>
+        <div class="extremes reveal" style="--delay:330ms">
+          <p class="extremes-label">Extremums at</p>
+          <p class="extremes-line"><span>(nihilism, anarchy)</span> <span class="code">&lt;==&gt;</span> <span>(loss of individuality, pluribus!)</span></p>
+        </div>
+        <p class="question reveal" style="--delay:470ms">When does standardization enable individuality, and when does it suppress it?</p>
+      </div>
+    </section>
+
+    <section id="slide-13" class="slide single-quote pioneers" data-title="Blindspots" aria-labelledby="title-13">
+      <h2 id="title-13" class="section-title">Blindspots</h2>
+      <div class="slide-content">
+        <blockquote class="quote reveal">“Almost everyone who opens up a new field does not really understand it <em>the way the followers do.</em>”</blockquote>
+      </div>
+    </section>
+
+    <section id="slide-14" class="slide expertise" data-title="Blindspots" data-pair="expertise" aria-labelledby="title-14">
+      <h2 id="title-14" class="section-title">Blindspots</h2>
+      <div class="slide-content">
+        <blockquote class="quote reveal" data-persist="expertise-quote">“That a language is easy for the computer expert does not mean it is necessarily easy for the non-expert, and it is likely non-experts will do the bulk of the programming (coding, if you wish) in the near future.”</blockquote>
+        <p class="prompt reveal" data-persist="expertise-prompt" style="--delay:180ms">Question: What languages do you reach for, in areas where</p>
+        <ul class="expertise-list">
+          <li><span class="reveal" data-persist="expertise-yes" style="--delay:280ms">You have expertise</span></li>
+          <li><span class="reveal" data-persist="expertise-no" style="--delay:380ms">You have no expertise</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="slide-15" class="slide expertise" data-title="Blindspots" data-pair="expertise" aria-labelledby="title-15">
+      <h2 id="title-15" class="section-title">Blindspots</h2>
+      <div class="slide-content">
+        <blockquote class="quote reveal" data-persist="expertise-quote">“That a language is easy for the computer expert does not mean it is necessarily easy for the non-expert, and it is likely non-experts will do the bulk of the programming (coding, if you wish) in the near future.”</blockquote>
+        <p class="prompt reveal" data-persist="expertise-prompt" style="--delay:180ms">Question: What languages do you reach for, in areas where</p>
+        <ul class="expertise-list">
+          <li><span class="reveal" data-persist="expertise-yes">You have expertise</span><span class="answer reveal" style="--delay:70ms"> - <strong>Go</strong></span></li>
+          <li><span class="reveal" data-persist="expertise-no">You have no expertise</span><span class="answer reveal" style="--delay:330ms"> - <strong>English!</strong></span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="slide-16" class="slide discovery" data-title="Ambiguity Begets Creativity" aria-labelledby="title-16">
+      <h2 id="title-16" class="section-title">Ambiguity Begets Creativity</h2>
+      <div class="slide-content discovery-copy">
+        <blockquote class="quote reveal">“One trouble with much of programming is simply that often there is not a well-defined job to be done; rather, the programming process itself will gradually <em>discover what the problem is!</em>”</blockquote>
+        <ul class="notes">
+          <li class="reveal" style="--delay:140ms">I think this is a good thing!</li>
+          <li class="reveal" style="--delay:230ms">Relevant - Peter Naur’s <em>Programming as Theory Building</em></li>
+        </ul>
+        <p class="question reveal" style="--delay:400ms"><span class="question-label">Question:</span> When an AI writes the implementation, where does the discovery of the problem happen?</p>
+      </div>
+      <img class="art discovery-art reveal" style="--delay:140ms" src="assets/discovery.webp" width="1254" height="1254" alt="The pocket terminal draws its next path on an unfinished map." loading="lazy">
+    </section>
+  </main>
+
+  <footer class="navigation" aria-label="Slide navigation">
+    <button id="previous" class="nav-arrow" aria-label="Previous slide" title="Previous slide (←)">←</button>
+    <button id="slide-counter" class="counter" aria-haspopup="dialog" title="Open slide overview"><span id="current-number">01</span><span class="counter-divider">/</span>16</button>
+    <div id="progress" class="progress" aria-label="Jump to a slide"></div>
+    <button id="next" class="nav-arrow" aria-label="Next slide" title="Next slide (→ or Space)">→</button>
+  </footer>
+  <p id="status" class="sr-only" aria-live="polite"></p>
+  <button id="blackout" hidden aria-label="Resume presentation"></button>
+
+  <dialog id="overview" aria-labelledby="overview-title">
+    <div class="dialog-heading"><h2 id="overview-title">Slides</h2><button class="close-dialog" aria-label="Close slide overview">×</button></div>
+    <ol id="overview-list"></ol>
+  </dialog>
+  <dialog id="help" aria-labelledby="help-title">
+    <div class="dialog-heading"><h2 id="help-title">Presentation controls</h2><button class="close-dialog" aria-label="Close keyboard shortcuts">×</button></div>
+    <dl class="shortcuts">
+      <div><dt><kbd>→</kbd> <kbd>Space</kbd></dt><dd>Next slide</dd></div>
+      <div><dt><kbd>←</kbd></dt><dd>Previous slide</dd></div>
+      <div><dt><kbd>Home</kbd> <kbd>End</kbd></dt><dd>First / last slide</dd></div>
+      <div><dt><kbd>O</kbd></dt><dd>Slide overview</dd></div>
+      <div><dt><kbd>R</kbd></dt><dd>Reading view</dd></div>
+      <div><dt><kbd>F</kbd></dt><dd>Fullscreen</dd></div>
+      <div><dt><kbd>B</kbd></dt><dd>Blank screen / resume</dd></div>
+      <div><dt><kbd>?</kbd></dt><dd>These controls</dd></div>
+    </dl>
+    <p class="help-note">You control every slide advance. In reading view, all slides are visible. Swipe left or right in presentation view.</p>
+  </dialog>
+</body>
+</html>
