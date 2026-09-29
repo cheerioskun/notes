@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f2eee4">
+  <meta name="description" content="Richard Hamming's A History of Software. A presentation on abstraction, composition, language, and programming as discovery.">
+  <title>A History of Software · Richard Hamming</title>
+  <link rel="preload" href="../taodse-ch4/assets/libre-caslon-400.woff" as="font" type="font/woff" crossorigin>
+  <link rel="preload" href="../taodse-ch4/assets/dm-sans-400.woff" as="font" type="font/woff" crossorigin>
+  <link rel="stylesheet" href="deck.css">
+  <script src="deck.js" defer></script>
+</head>
+<body data-mode="read">
+  <header class="toolbar" aria-label="Presentation controls">
+    <a href="../../index.html" class="back">← notes</a>
+    <div class="tools">
+      <button id="overview-button" title="Overview (O)">Slides</button>
+      <button id="notes-button" title="Presenter notes (N)">Notes</button>
+      <button id="mode-button" title="Reading view (R)">Present</button>
+      <button id="fullscreen-button" title="Fullscreen (F)">Fullscreen</button>
+      <button id="help-button" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">?</button>
+    </div>
+  </header>
+
+  <main class="stage" id="stage" aria-label="A History of Software">
+    <section class="slide cover" id="slide-1" data-title="A History of Software" aria-labelledby="title-1">
+      <p class="eyebrow">Richard Hamming · Chapter 4</p>
+      <div class="cover-title">
+        <h1 id="title-1">A History<br>of <em>Software</em></h1>
+        <p class="book-title">The Art of Doing<br>Science and Engineering</p>
+      </div>
+      <img class="cover-art" src="../taodse-ch4/assets/title.webp" width="1536" height="1024" alt="A small pocket terminal considers an early computing machine." fetchpriority="high">
+      <template class="presenter-note"><p>A discussion of Chapter 4. The chapter moves from programming directly in binary to the abstraction layers we use to express and discover what we want.</p><p>The illustrations are fictional, AI-generated editorial artwork from the earlier edition. The recurring character is the pocket terminal.</p></template>
+    </section>
+
+    <section class="slide threads" id="slide-2" data-title="Four threads" aria-labelledby="title-2">
+      <p class="eyebrow">The chapter</p>
+      <h2 id="title-2">Four threads</h2>
+      <ol class="thread-list">
+        <li><span class="thread-number">01</span><span>Binary to <em>abstraction</em></span></li>
+        <li data-build="1"><span class="thread-number">02</span><span>Composition &amp; reuse</span></li>
+        <li data-build="2"><span class="thread-number">03</span><span>Language &amp; its limits</span></li>
+        <li data-build="3"><span class="thread-number">04</span><span>Programming as an <em>art</em></span></li>
+      </ol>
+      <p class="small-bottom">Prescient commentary. Controversial takes. Quotes worth discussing.</p>
+      <template class="presenter-note"><p>The original framing: this is a longer chapter with many relevant topics, amazingly prescient commentary, and controversial takes. The discussion uses quotations with commentary on top.</p><p>Reveal the four threads one at a time. The last thread returns at the end: programming can help us discover the problem itself.</p></template>
+    </section>
+
+    <section class="slide binary" id="slide-3" data-title="Absolute binary" aria-labelledby="title-3">
+      <p class="eyebrow">01 · Abstraction</p>
+      <h2 id="title-3">Absolute binary</h2>
+      <blockquote class="quote large">“In the beginning we programmed in <em>absolute binary</em>, meaning we wrote the actual address where things were in binary, and wrote the instruction part also in binary!”</blockquote>
+      <div class="binary-terms" data-build="1"><span>The instruction</span><span>The address</span><span class="term-caption">Both, by hand.</span></div>
+      <template class="presenter-note"><p>Richard Hamming, <cite>The Art of Doing Science and Engineering</cite>, Chapter 4. The quotation is reproduced from the supplied discussion slides.</p><p>The burden includes both selecting an instruction and knowing the actual address of the relevant storage.</p></template>
+    </section>
+
+    <section class="slide detour" id="slide-4" data-title="Patching by detour" aria-labelledby="title-4">
+      <p class="eyebrow">01 · Abstraction</p>
+      <h2 id="title-4">Patching by detour</h2>
+      <div class="detour-layout">
+        <blockquote class="quote">“If [you] wanted to insert some omitted instructions, then you took the immediately preceding instruction and <em>replaced it by a transfer to some empty space.</em>”</blockquote>
+        <ol class="detour-steps" data-build="1">
+          <li><span>01</span><p>Jump out<small>Replace the preceding instruction.</small></p></li>
+          <li><span>02</span><p>Run the patch<small>Original instruction, then additions.</small></p></li>
+          <li><span>03</span><p>Jump back<small>Resume the main program.</small></p></li>
+        </ol>
+      </div>
+      <template class="presenter-note"><blockquote>“If [you] wanted to insert some omitted instructions, then you took the immediately preceding instruction and replaced it by a transfer to some empty space. There you put in the instruction you just wrote over, added the instructions you wanted to insert, followed by a transfer back to the main program”</blockquote><p>Hamming, Chapter 4. The main slide shows an excerpt. This is the full quotation from the supplied slides.</p><p>The next discussion thread is the move from monolithic programs to procedures and functions. A patching detour illustrates control transfer, but does not by itself give us a reusable procedure.</p></template>
+    </section>
+
+    <section class="slide symbols" id="slide-5" data-title="Symbolic instructions" aria-labelledby="title-5">
+      <p class="eyebrow">01 · Abstraction</p>
+      <h2 id="title-5">Symbolic instructions</h2>
+      <div class="symbol-pair"><div><span class="pair-label">The programmer writes</span><p class="mnemonic">ADD</p></div><div data-build="1"><span class="pair-label">The machine receives</span><p class="bits">01100101</p></div></div>
+      <blockquote class="quote symbol-quote">“Someone got the idea a short piece of program could be written which would read in the symbolic names of the operations (like ADD) and translate them at input time to the binary representations used inside the machine (say 01100101).”</blockquote>
+      <template class="presenter-note"><p>Hamming, Chapter 4. The binary value is Hamming's illustrative example, not an asserted opcode for a particular instruction set.</p><p>Symbolic instruction names reduce one burden. Symbolic addresses reduce another: a name can refer to storage without hard-coding its numeric location. Registers and stack variables are related conveniences, but symbolic addresses are not equivalent to either.</p></template>
+    </section>
+
+    <section class="slide composition" id="slide-6" data-title="Composability" data-theme="sage" aria-labelledby="title-6">
+      <p class="eyebrow">02 · Composition</p>
+      <h2 id="title-6">Composability</h2>
+      <div class="composition-words"><p>Monolithic programs</p><p data-build="1">Procedures</p><p data-build="2"><em>Functions</em></p></div>
+      <p class="composition-thought" data-build="3">A small set of simple operations.<br>Complex behavior through composition.</p>
+      <template class="presenter-note"><p>The supplied slides propose “Composability as a general catalyst to emergence.” This is a discussion lens: small actions can combine repeatedly into complex behavior.</p><p>The progression is an organizing idea, not a claim that all software history followed a single linear path. What properties let primitives compose? What constraints stop them from composing?</p></template>
+    </section>
+
+    <section class="slide vm-quote" id="slide-7" data-title="Virtual machines" aria-labelledby="title-7">
+      <p class="eyebrow">01 · Abstraction</p>
+      <h2 id="title-7">Virtual machines</h2>
+      <blockquote class="quote large">“When, and only when, you have a <em>totally virtual machine</em> will you have the ability to transfer software from one machine to another without almost endless trouble and errors.”</blockquote>
+      <p class="attribution">Richard Hamming</p>
+      <template class="presenter-note"><p>Hamming, Chapter 4. Treat “when, and only when” as Hamming's strong claim to discuss. Portable behavior depends on the guarantees of the abstraction and whether the program stays within them.</p><p>The following slide uses “machine” broadly to invite examples of different abstraction surfaces. They are not all the same kind of virtual machine.</p></template>
+    </section>
+
+    <section class="slide machines" id="slide-8" data-title="Which machines do we program?" aria-labelledby="title-8">
+      <p class="eyebrow">01 · Abstraction</p>
+      <h2 id="title-8">Which machines<br>do we program?</h2>
+      <div class="machine-layout">
+        <p class="machine-prompt">What other successful<br>“virtual machines”<br>come to mind?</p>
+        <table class="machine-table" aria-label="Examples of software abstractions">
+          <tbody>
+            <tr><th scope="row">Java</th><td>JVM</td></tr>
+            <tr><th scope="row">LLVM</th><td>IR &amp; toolchain</td></tr>
+            <tr data-build="1"><th scope="row">Browsers</th><td>JavaScript engines</td></tr>
+            <tr data-build="2"><th scope="row">Ethereum</th><td>EVM</td></tr>
+            <tr data-build="3"><th scope="row">Python</th><td>Interpreter</td></tr>
+            <tr data-build="4"><th scope="row">Operating systems</th><td>Process &amp; syscall interface</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small-bottom">Different abstractions. Different portability guarantees.</p>
+      <template class="presenter-note"><p>The supplied deck starts with Java/JVM and LLVM, then asks for more examples before revealing browsers, Ethereum/EVM, Python, and operating systems.</p><p>LLVM is a compiler infrastructure with an intermediate representation. An OS provides a process and system-call interface. They belong in a discussion of abstraction, but should not be equated with the JVM or EVM.</p><p>References: <a href="https://llvm.org/">LLVM Project</a>; <a href="https://docs.python.org/3/glossary.html#term-interpreted">Python glossary: interpreted</a>. Names and examples otherwise follow the supplied deck.</p></template>
+    </section>
+
+    <section class="slide primitives" id="slide-9" data-title="Canonical primitives" aria-labelledby="title-9">
+      <p class="eyebrow">02 · Composition</p>
+      <h2 id="title-9">Canonical primitives</h2>
+      <p class="unix-label">UNIX's organizing idea</p>
+      <p class="everything">Everything<br>is a <em>file</em></p>
+      <div class="primitive-side" data-build="1"><p class="blank-statement">“It’s all just<br><span class="blank">________</span><br>(and <span class="blank">________</span>).”</p><p class="prompt">Which set of primitives<br>do you find elegant?</p></div>
+      <template class="presenter-note"><p>The supplied slides discuss opinionated frameworks, the UNIX “everything is a file” idea, and finding a canonical set of primitives.</p><p>“Everything is a file” is an organizing maxim, not a literal claim that every operating-system resource has identical semantics. The question is about the power and cost of choosing a shared interface.</p></template>
+    </section>
+
+    <section class="slide thought-code" id="slide-10" data-title="Thought and code" data-theme="rust" aria-labelledby="title-10">
+      <p class="eyebrow">03 · Language</p>
+      <h2 id="title-10">Thought &amp; code</h2>
+      <p class="thought-statement">The language of<br><em>our thoughts.</em><br>The language of<br><em>the machine.</em></p>
+      <p class="thought-question" data-build="1">Is the gap a limitation of our languages,<br>or of how clearly we know what we want?</p>
+      <template class="presenter-note"><p>The supplied slides ask about closing the seemingly infinite gap between the language of our thoughts and the language of the machine's thoughts. Can we ever close it?</p><p>Pause after the question. One limitation can be the expressive language. Another can be the fact that we have not yet made our own intent precise.</p></template>
+    </section>
+
+    <section class="slide trust" id="slide-11" data-title="Trusting Trust" data-theme="dark" aria-labelledby="title-11">
+      <p class="eyebrow">03 · Language</p>
+      <div class="trust-copy">
+        <h2 id="title-11">Trusting<br><em>Trust</em></h2>
+        <blockquote class="quote">“To what extent should one trust a statement that a program is free of Trojan horses?”</blockquote>
+        <p class="trust-answer" data-build="1">“Perhaps it is more important to trust <em>the people who wrote the software.</em>”</p>
+        <p class="trust-source">Ken Thompson · <a href="https://dl.acm.org/doi/10.1145/358198.358210">Reflections on Trusting Trust</a></p>
+      </div>
+      <img class="trust-art" src="../taodse-ch4/assets/trust.webp" width="1254" height="1254" alt="The pocket terminal examines a machine with a wooden Trojan horse hidden inside." loading="lazy">
+      <template class="presenter-note"><p>The source deck recommends Ken Thompson's <cite>Reflections on Trusting Trust</cite> and supplies the full quotation, split here into a question and an answer.</p><p>Ken Thompson, <cite>Communications of the ACM</cite> 27(8), 1984, pp. 761–763. <a href="https://dl.acm.org/doi/10.1145/358198.358210">Original article</a>. Abstraction reduces what we need to know, while introducing dependencies we may need to trust.</p></template>
+    </section>
+
+    <section class="slide standards" id="slide-12" data-title="Standardization and individuality" aria-labelledby="title-12">
+      <p class="eyebrow">03 · Language</p>
+      <h2 id="title-12">Standardization<br>&amp; individuality</h2>
+      <p class="standard-intro">We yearn to reduce uncertainty.</p>
+      <div class="standard-poles"><div><p class="pole-title">Too little structure</p><p class="pole-detail">Anarchy.<br>Nothing composes.</p></div><div data-build="1"><p class="pole-title">Too much structure</p><p class="pole-detail">Uniformity.<br>No room to differ.</p></div></div>
+      <p class="standard-question" data-build="2">When does a shared standard enable individuality,<br>and when does it suppress it?</p>
+      <template class="presenter-note"><p>The supplied slides frame uncertainty reduction as a fundamental human labor and place the extremes at “nihilism, anarchy” and “loss of individuality, pluribus!” The comparison on this slide is a discussion framing, not an empirical law.</p><p>A useful distinction to explore: a standard at the interface can make unlike parts work together. A standard imposed on the parts themselves can restrict their variation.</p></template>
+    </section>
+
+    <section class="slide blindspots" id="slide-13" data-title="The expert's blind spot" aria-labelledby="title-13">
+      <p class="eyebrow">03 · Language</p>
+      <h2 id="title-13">The expert’s blind spot</h2>
+      <blockquote class="quote large">“That a language is easy for the computer expert does not mean it is necessarily easy for the <em>non-expert</em>…”</blockquote>
+      <p class="prediction" data-build="1">Hamming expected non-experts to do<br>the bulk of the programming.</p>
+      <template class="presenter-note"><blockquote>“That a language is easy for the computer expert does not mean it is necessarily easy for the non-expert, and it is likely non-experts will do the bulk of the programming (coding, if you wish) in the near future.”</blockquote><p>Hamming, Chapter 4. The slide splits the full quotation into an excerpt and a paraphrase of his prediction. This is his forecast, not a claim about current measured usage.</p></template>
+    </section>
+
+    <section class="slide expertise" id="slide-14" data-title="What language do you reach for?" aria-labelledby="title-14">
+      <p class="eyebrow">03 · Language</p>
+      <h2 id="title-14">What language<br>do you reach for?</h2>
+      <div class="language-rows"><div><p>Where you have expertise</p><p class="language-answer" data-build="1">Go</p></div><div><p>Where you have no expertise</p><p class="language-answer" data-build="2"><em>English</em></p></div></div>
+      <template class="presenter-note"><p>Ask the room first. Reveal Go, then English. These are the presenter's examples from the supplied slides, not a general prescription.</p><p>What does English let a non-expert express? Which details are left implicit? Does knowing the domain change the language we choose, or the precision we can achieve in it?</p></template>
+    </section>
+
+    <section class="slide discovery" id="slide-15" data-title="Programming as discovery" aria-labelledby="title-15">
+      <p class="eyebrow">04 · Discovery</p>
+      <h2 id="title-15">Programming<br>as <em>discovery</em></h2>
+      <blockquote class="quote discovery-quote">“One trouble with much of programming is simply that often there is not a well-defined job to be done; rather, the programming process itself will gradually <em>discover what the problem is!</em>”</blockquote>
+      <p class="discovery-turn" data-build="1">And that can be a good thing.</p>
+      <template class="presenter-note"><p>Hamming, Chapter 4. This full quotation is reproduced from the supplied slides. The presenter's response is “I think this is a good thing!”</p><p>Writing a program can force a vague intention to become concrete. The next slide ties this to Peter Naur's <cite>Programming as Theory Building</cite>.</p></template>
+    </section>
+
+    <section class="slide closing" id="slide-16" data-title="Does the process still discover the problem?" aria-labelledby="title-16">
+      <p class="eyebrow">04 · Discovery</p>
+      <h2 id="title-16">Does the<br><em>process</em> still<br>discover<br>the problem?</h2>
+      <p class="closing-reading">Peter Naur<br><a href="https://doi.org/10.1016/0165-6074(85)90032-8"><cite>Programming as Theory Building</cite></a></p>
+      <img class="closing-art" src="../taodse-ch4/assets/discovery.webp" width="1254" height="1254" alt="The pocket terminal sketches a route while looking out over an unfinished map." loading="lazy">
+      <template class="presenter-note"><p>The original closing question: “Does the ‘programming process’ still help discover the problem?”</p><p>Related reading: Peter Naur, <cite>Programming as Theory Building</cite>, <cite>Microprocessing and Microprogramming</cite> 15(5), 1985, pp. 253–261. <a href="https://doi.org/10.1016/0165-6074(85)90032-8">Original article</a>.</p><p>Naur argues that programming builds an understanding of how the problem is solved. A useful discussion question: when implementation becomes easier to delegate, which parts of that understanding still require our direct participation?</p></template>
+    </section>
+  </main>
+
+  <footer class="navigation" aria-label="Slide navigation">
+    <button id="previous" aria-label="Previous reveal or slide" title="Previous (←)">←</button>
+    <button id="counter" aria-label="Open slide overview"><span id="slide-number">01</span><span class="slash">/</span>16</button>
+    <p id="build-status" class="build-status">A History of Software</p>
+    <button id="next" aria-label="Next reveal or slide" title="Next (→ or Space)">→</button>
+  </footer>
+  <p class="sr-only" id="status" aria-live="polite"></p>
+  <button id="blackout" hidden aria-label="Resume presentation"></button>
+  <dialog id="overview" aria-labelledby="overview-title"><div class="dialog-heading"><h2 id="overview-title">A History of Software</h2><button class="close-dialog" aria-label="Close overview">×</button></div><ol id="overview-list"></ol></dialog>
+  <dialog id="notes" aria-labelledby="notes-title"><div class="dialog-heading"><h2 id="notes-title">Presenter notes</h2><button class="close-dialog" aria-label="Close notes">×</button></div><div id="notes-content"></div></dialog>
+  <dialog id="help" aria-labelledby="help-title"><div class="dialog-heading"><h2 id="help-title">Presentation controls</h2><button class="close-dialog" aria-label="Close shortcuts">×</button></div><dl class="shortcuts"><div><dt>→ / Space</dt><dd>Next reveal or slide</dd></div><div><dt>←</dt><dd>Previous reveal or slide</dd></div><div><dt>Shift + → / ←</dt><dd>Skip to next / previous slide</dd></div><div><dt>O</dt><dd>Slide overview</dd></div><div><dt>N</dt><dd>Presenter notes and full quotes</dd></div><div><dt>R</dt><dd>Reading view</dd></div><div><dt>F</dt><dd>Fullscreen</dd></div><div><dt>B</dt><dd>Blank screen</dd></div><div><dt>Home / End</dt><dd>First / last slide</dd></div></dl><p class="help-note">Reveals wait for you. Swipe on touch screens. Reading view and printing show all answers.</p><p class="help-note"><button id="print-button" class="inline-link">Print / save PDF</button></p></dialog>
+  <noscript><p class="noscript-note">All slides are shown in reading view. JavaScript enables presentation controls.</p></noscript>
+</body>
+</html>
