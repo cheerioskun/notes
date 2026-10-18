@@ -1,5 +1,16 @@
 [
   {
+    "date": "2026-10-18",
+    "title": "Why a GPU needs so many threads",
+    "course": "GPU Architecture",
+    "minutes": 20,
+    "file": "2026-10-18-gpu-room-to-wait.html",
+    "summary": "Follow one matrix product through four resident warps, pending loads, and ready instructions; an interactive schedule separates latency hiding from faster memory.",
+    "series": "Matrix multiply meets the hardware",
+    "part": 1,
+    "parts": 3
+  },
+  {
     "date": "2026-09-28",
     "title": "Reservoir computing: let the system move, learn how to read it",
     "course": "Machine Learning / Physical Computing",
