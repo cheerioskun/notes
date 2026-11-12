@@ -8,7 +8,7 @@
 <div class="layout"><nav aria-label="Article sections"><a href="#question">01 · A call with a missing destination</a><a href="#elf">02 · What the file remembers</a><a href="#mapping">03 · Where the bytes land</a><a href="#startup">04 · Who runs before main</a><a href="#call">05 · The first call</a><a href="#lookup">06 · What dlsym actually does</a><a href="#preload">07 · Put a wrapper in the way</a><a href="#research">08 · Where hooks stop working</a><a href="#lab">09 · Open the binary yourself</a><a href="#sources">Sources &amp; further paths</a></nav>
 <article>
 <section id="question"><span class="sectionnum">01 / THE MISSING DESTINATION</span><h2>A call is easy—once you know the address.</h2>
-<p>Imagine a service that calls <code>scan(7)</code>. Today the implementation lives in <code>libwork.so</code>; tomorrow you want to put admission control around it, without rebuilding the service. A small shared library could define another <code>scan</code>, acquire a permit, call the original, and release the permit. The unresolved question is how execution ever reaches this new definition.</p>
+<p>Imagine a service that calls <code>scan(7)</code>. Today the implementation lives in <code>libwork.so</code>, a Linux shared-library file (<code>.so</code> means shared object); tomorrow you want to put admission control around it, without rebuilding the service. A small shared library could define another <code>scan</code>, acquire a permit, call the original, and release the permit. The unresolved question is how execution ever reaches this new definition.</p>
 <p>Start with the ordinary call. A CPU executes addresses, not names. Yet the application can be built before its library has a runtime address. Address-space layout randomization can put that library somewhere different on every execution. Copying the library’s current address into the executable would make the next execution wrong.</p>
 <p>The solution has two stages. The build-time linker leaves a usable call route and a description of what is missing. Later, a user-space dynamic linker maps the required objects, chooses definitions, and writes the addresses into designated locations. Once this preparation has happened, most calls need no further name lookup.</p>
 <pre><code>/* libwork.so */
@@ -22,7 +22,25 @@ int result = scan(7);</code></pre>
 <div class="note"><p><strong>Keep three objects separate:</strong> the name <code>scan</code>, the address chosen for that name, and the machine instructions at that address. Symbol lookup chooses an address. A GOT update changes a stored address. An entry patch changes instructions. These act at different points in the journey.</p></div>
 </section>
 <section id="elf"><span class="sectionnum">02 / THE FILE ON DISK</span><h2>What does the executable know?</h2>
-<p>Our application and its library are ELF files. ELF is a container for executable bytes and the metadata needed to understand them. A relocatable <code>.o</code>, a normal executable, and a shared library can all use ELF; their roles and headers differ. Our application is a position-independent executable, so <code>readelf -h</code> reports <code>ET_DYN</code>, just as it does for the shared library.</p>
+<p>Our application and its library use <strong>ELF—the Executable and Linkable Format</strong>. This file format stores machine code together with descriptions of that code: what architecture it runs on, where its contents are, and which addresses still need to be filled in.</p>
+<h3>First, what kind of ELF file is this?</h3>
+<p>The ELF header at the beginning of the file contains a numeric field named <code>e_type</code>. Constants whose names begin with <code>ET_</code> name the possible values: think <strong>ELF type</strong>. <code>ET_DYN</code> is the name for value <code>3</code>, whose specified meaning is “shared object file”; <code>DYN</code> is the dynamic mnemonic. These names are labels for numbers, not components that run. <a href="#s18">[18]</a></p>
+<div class="tablewrap"><table><thead><tr><th>Constant</th><th>Value</th><th>Role to remember</th></tr></thead><tbody>
+<tr><td><code>ET_NONE</code></td><td>0</td><td>No file type specified.</td></tr>
+<tr><td><code>ET_REL</code></td><td>1</td><td>Relocatable object: typically a compiler’s <code>.o</code>, an input to linking.</td></tr>
+<tr><td><code>ET_EXEC</code></td><td>2</td><td>Executable with a fixed link-time virtual-address layout.</td></tr>
+<tr><td><code>ET_DYN</code></td><td>3</td><td>Shared object; also the type Linux uses for position-independent executables.</td></tr>
+<tr><td><code>ET_CORE</code></td><td>4</td><td>Core dump: a saved process image for debugging.</td></tr>
+</tbody></table></div>
+<p>A <strong>position-independent executable (PIE)</strong> is a program built so its image can be loaded at different base addresses. A shared library needs that ability too. Linux therefore uses <code>ET_DYN</code> for both. The type alone does not tell you which role the file serves. Also, <code>ET_EXEC</code> does not mean “statically linked”: a fixed-address executable can still use shared libraries.</p>
+<pre><code>$ readelf -hW app
+# Selected output: readelf renders e_type=3 as DYN, with a PIE description.
+  Type:                              DYN (Position-Independent Executable file)
+
+$ readelf -hW libwork.so
+# Same e_type value, but this file serves as a shared library.
+  Type:                              DYN (Shared object file)</code></pre>
+<div class="note"><p><strong>The small model:</strong> <code>REL</code> = link input; <code>EXEC</code> = fixed-layout program; <code>DYN</code> = shared-object / PIE form; <code>CORE</code> = saved process. File type and static-versus-dynamic linking are separate questions.</p></div>
 <p>ELF offers two views. <strong>Sections</strong> organize content for the toolchain: instructions in <code>.text</code>, names in string tables, symbols in symbol tables, relocations in relocation sections. <strong>Program headers</strong> describe what a running process needs: which file ranges to map, at which relative virtual addresses, with which permissions. One loadable segment can contain many sections. The loader does not need the section-header table to find the runtime metadata. <a href="#s1">[1]</a></p>
 <div class="tablewrap"><table><thead><tr><th>Inspect</th><th>What it answers in this lab</th></tr></thead><tbody>
 <tr><td><code>readelf -lW app</code></td><td>Which segments get mapped? Which interpreter starts the process?</td></tr>
@@ -31,31 +49,62 @@ int result = scan(7);</code></pre>
 <tr><td><code>readelf -rW app</code></td><td>Which locations still need runtime address fixups?</td></tr>
 <tr><td><code>objdump -d app</code></td><td>What route does a call instruction actually take?</td></tr>
 </tbody></table></div>
+<h3>What is a symbol table—and why are there two?</h3>
+<p>A <strong>symbol</strong> is a name-associated record about something in the program, often a function or variable. Its record includes a reference to the name, a value (such as an address), a size, and attributes describing its kind and visibility. A <strong>defined</strong> entry describes something this file supplies; an <strong>undefined</strong> entry records a name this file uses but needs another object to supply. A symbol table is an array of these records, not the functions’ machine code. <a href="#s3">[3]</a></p>
+<p>ELF commonly has two such arrays. <code>.symtab</code> is the broader table for build-time linking and tools such as debuggers; it can include local names and can be removed from a shipped executable. <code>.dynsym</code> is the smaller table used by the dynamic linker for runtime symbol resolution: it includes exported definitions and unresolved imports. Calling the first one the “static symbol table” describes its role, not whether the executable is statically linked. A dynamically linked executable can contain both.</p>
+<pre><code>$ nm app | grep scan
+# nm reads the ordinary symbol table here: t = local code, U = undefined.
+0000000000001480 t local_scan
+                 U scan
+
+$ nm -D app | grep scan
+# -D selects the dynamic symbol table. local_scan is absent.
+                 U scan</code></pre>
+<p>So the application has code for <code>local_scan</code>, but it exposes no dynamic symbol for that local name. Its <code>scan</code> entry instead records an unresolved import. The library’s dynamic symbol table will supply a defined <code>scan</code> entry. This distinction will matter when we try to intercept the calls.</p>
+<div class="note"><p><strong>Read the prefixes by their container.</strong> <code>ET_</code> labels a file’s type; <code>PT_</code> labels a program-header entry’s type; <code>DT_</code> labels an entry’s tag in the dynamic table. A leading dot, as in <code>.dynsym</code>, is part of a section’s name. These are different kinds of metadata, not different actors.</p></div>
 <h3>A dependency is a library name; an import is a symbol name.</h3>
-<p>In our executable, the dynamic table includes the following entries. These are selected lines from the built lab, not a hypothetical format:</p>
-<pre><code>NEEDED    Shared library: [libwork.so]
-NEEDED    Shared library: [libc.so.6]
-RUNPATH   Library runpath: [$ORIGIN]
-SYMTAB    0x3e8
-STRTAB    0x670
-JMPREL    0x900
-PLTGOT    0x3fe8</code></pre>
-<p><code>DT_NEEDED</code> requests an object named <code>libwork.so</code>. Separately, the dynamic symbol table contains an undefined <code>scan</code> entry. The loader uses lookup scope, binding rules, visibility, and any version requirements to choose a definition. A normal ELF import is not an instruction to fetch this symbol exclusively from the library that originally satisfied the link. That flexibility is what makes interposition possible. <a href="#s2">[2]</a></p>
+<p>The build-time linker records the executable’s runtime-linking metadata in an array called the <strong>dynamic table</strong>, conventionally stored in the <code>.dynamic</code> section. Each entry has a numeric <strong>tag</strong> identifying what kind of information it contains, and an associated value. <code>DT_</code> names these dynamic-table tags. For example, <code>DT_NEEDED</code> is tag <code>1</code>: a dependency-name entry. The loader is the actor that reads these records and acts on them.</p>
+<pre><code>$ readelf -dW app
+# Selected rows. readelf prints decoded tag names without the DT_ prefix.
+  Tag                Type       Name/Value
+ 0x0000000000000001 (NEEDED)     Shared library: [libwork.so]
+ 0x0000000000000001 (NEEDED)     Shared library: [libc.so.6]
+ 0x000000000000001d (RUNPATH)    Library runpath: [$ORIGIN]
+ 0x0000000000000006 (SYMTAB)     0x3e8
+ 0x0000000000000005 (STRTAB)     0x670
+ 0x0000000000000017 (JMPREL)     0x900
+ 0x0000000000000003 (PLTGOT)     0x3fe8</code></pre>
+<p>Take the first row literally. The linker wrote an entry whose tag is <code>DT_NEEDED</code> and whose value is an offset into the dynamic string table, <code>.dynstr</code>. At that offset is the string <code>libwork.so</code>. At startup, the loader reads the entry, retrieves the name, finds the library file, and loads it if needed. <strong>The record says that this executable depends on that library; the loader performs the work.</strong> “Shared library: […]” is <code>readelf</code>’s human-readable interpretation of those bytes. <a href="#s2">[2]</a></p>
+<pre><code>$ readelf -p .dynstr app
+# Selected strings. The bracketed numbers are hexadecimal byte offsets.
+  [    55]  scan
+  [    ed]  libwork.so
+  [    f8]  libc.so.6
+  [   119]  $ORIGIN</code></pre>
+<p>In this build the first dependency entry stores <code>0xed</code>; the string beginning at offset <code>0xed</code> is <code>libwork.so</code>. The <code>DT_STRTAB</code> entry identifies the string table’s location. The <code>DT_SYMTAB</code> entry identifies the dynamic symbol table’s location—even though its tag says <code>SYMTAB</code>, the runtime table here is <code>.dynsym</code>. The later <code>JMPREL</code> and <code>PLTGOT</code> rows locate structures we will follow when the first call runs.</p>
+<p>Loading a dependency and resolving an import are separate operations. The loader first has the library available; it must also choose which definition satisfies the application’s undefined <code>scan</code> entry. For that second operation, it searches an ordered set of eligible objects, called a <strong>lookup scope</strong>, and checks their dynamic symbol tables. The scope determines which objects are candidates and the order in which they are searched; it is not their order in virtual memory. The dependency entry does not tie every <code>scan</code> reference exclusively to <code>libwork.so</code>. That flexibility allows another loaded object’s definition to be chosen—a behavior called <strong>symbol interposition</strong>.</p>
 <p>The library’s exported symbol entry says:</p>
-<pre><code>Value             Size Type  Bind   Vis      Ndx Name
+<pre><code>$ readelf --dyn-syms -W libwork.so
+# Selected entry: this file defines scan, rather than importing it.
+Value             Size Type  Bind   Vis      Ndx Name
 0000000000001100     4 FUNC  GLOBAL DEFAULT    9 scan</code></pre>
-<p>Here <code>0x1100</code> is an ELF virtual address, not a final process address. The four-byte implementation is simply <code>lea 1(%rdi), %eax; ret</code> on this build. The name itself lives in <code>.dynstr</code>; the symbol entry points into that string table. A loader hash table helps find candidates without disassembling functions. <a href="#s3">[3]</a></p>
+<p>Read the row as: <code>FUNC</code> identifies a function; <code>GLOBAL</code> makes it eligible to satisfy references from other objects; <code>DEFAULT</code> is its normal visibility setting; <code>Ndx=9</code> identifies the section containing its definition. An import would show <code>UND</code> (undefined) instead of a defining section index. Here <code>0x1100</code> is an ELF virtual address, not a final process address. The four-byte implementation is simply <code>lea 1(%rdi), %eax; ret</code> on this build. The name itself lives in <code>.dynstr</code>; the symbol entry points into that string table. A loader hash table helps find candidates without disassembling functions. <a href="#s3">[3]</a></p>
 <h3>A relocation is a deferred edit.</h3>
 <p>The application also contains this record:</p>
-<pre><code>Offset              Type                 Symbol
+<pre><code>$ readelf -rW app
+# Selected entry, retaining the location, relocation type, and name.
+Offset              Type                 Symbol
 0000000000004058    R_X86_64_JUMP_SLOT    scan + 0</code></pre>
-<p>Read it as: “when binding this function reference, put the chosen target address in the slot at this object’s ELF virtual address <code>0x4058</code>.” A relocation identifies a location and an operation; the symbol is one possible input to that operation. In ELF64 RELA records, the key fields are <code>r_offset</code>, <code>r_info</code>—encoding type and symbol index—and <code>r_addend</code>. Other relocations need no lookup: a relative relocation can initialize a pointer by adding the object’s load bias to an addend. <a href="#s4">[4]</a></p>
+<p>Read it as: “when binding this function reference, put the chosen target address in the slot at this object’s ELF virtual address <code>0x4058</code>.” A relocation identifies a location and an operation; the symbol is one possible input to that operation. In ELF64 RELA records, the key fields are <code>r_offset</code>, <code>r_info</code>—encoding type and symbol index—and <code>r_addend</code>. Other relocations need no lookup: a relative relocation can initialize a pointer by adding the object’s load bias to an addend. You need not memorize the numeric relocation encodings here: the important information is the location to update, the target name when one is involved, and the operation the loader performs. <a href="#s4">[4]</a></p>
 <p>The executable therefore contains both an operational route for the CPU and a description for the dynamic linker. The CPU never reads the name “scan.” It will follow an address the linker arranges.</p>
 </section>
 <section id="mapping"><span class="sectionnum">03 / THE PROCESS ADDRESS SPACE</span><h2>The file is not poured into one contiguous blob.</h2>
 <p>A process’s virtual address space is the whole collection of addresses it can use. A Linux <strong>VMA</strong>, or virtual memory area, describes one range with common mapping properties. A single shared object commonly occupies several VMAs: executable instructions, read-only constants, writable state, and sometimes anonymous zero-filled extensions. Neither a function nor a library needs its own process.</p>
 <p>In <code>/proc/self/maps</code>, each row gives an address range, permissions, a backing-file offset, device and inode, and a pathname. <code>r-xp</code> means readable, executable, private; <code>rw-p</code> means readable, writable, private. “Private” describes how writes affect the mapping, not whether clean physical pages can be shared. File-backed code pages can be shared through the page cache; writes to private data are private to the process. <a href="#s5">[5]</a></p>
-<div class="figure"><div class="label">One observed preloaded process · low addresses first</div><h3>Several objects. Several mappings each.</h3><p style="font-size:17px">Open a band to inspect its VMAs. Gaps are compressed; heights do not represent byte counts. Paths are shortened from the captured run.</p>
+<div class="figure"><div class="label">One observed preloaded process · low addresses first</div><h3>Several objects. Several mappings each.</h3><pre><code>$ ./app
+# The app prints its own /proc/self/maps; with the agent loaded:
+$ LD_PRELOAD="$PWD/libagent.so" ./app
+# The mapping bands below regroup selected rows from this second run.</code></pre><p style="font-size:17px">Open a band to inspect its VMAs. Gaps are compressed; heights do not represent byte counts. Paths are shortened from the captured run.</p>
 <div class="map">
 <details open><summary>app <span>bias 0x55e0f9a9a000</span></summary><pre><code>55e0f9a9a000–55e0f9a9b000 r--p off 0000
 55e0f9a9b000–55e0f9a9c000 r-xp off 1000
@@ -89,44 +138,49 @@ PLTGOT    0x3fe8</code></pre>
 <div class="gap">… gap … initial thread’s stack at 0x7ffcb3861000 …</div>
 </div><p class="caption">Observation, not a required ordering. ASLR, architecture, loader, environment, and later mappings change the layout. Symbol search order is not address order.</p></div>
 <h3>Three coordinates for the same byte.</h3>
-<p>To navigate from a disassembler to memory, distinguish a <strong>file offset</strong>, an <strong>ELF virtual address</strong>, and a <strong>runtime virtual address</strong>. For a byte inside a file-backed <code>PT_LOAD</code> segment:</p>
+<p>To navigate from a disassembler to memory, distinguish a <strong>file offset</strong>, an <strong>ELF virtual address</strong>, and a <strong>runtime virtual address</strong>. An entry with program-header type <code>PT_LOAD</code> describes a segment to map into memory. Its <code>p_offset</code> is the start in the file, and its <code>p_vaddr</code> is the corresponding start in ELF virtual-address coordinates. For a byte inside its file-backed portion:</p>
 <pre><code>ELF VA     = p_vaddr + (file_offset − p_offset)
 runtime VA = load_bias + ELF VA</code></pre>
-<p>The load bias is the adjustment from link-time virtual addresses to this process’s addresses. It is often the first mapping address for a PIE or DSO whose lowest loadable virtual address is zero, but that is not its definition. For many fixed-address executables the bias is zero. <code>dl_iterate_phdr()</code> exposes <code>dlpi_addr</code> and each program header, so an agent can compute <code>dlpi_addr + p_vaddr</code> directly. <a href="#s6">[6]</a></p>
+<p>The load bias is the adjustment from link-time virtual addresses to this process’s addresses. It is often the first mapping address for a PIE or dynamic shared object (DSO) whose lowest loadable virtual address is zero, but that is not its definition. For many fixed-address executables the bias is zero. <code>dl_iterate_phdr()</code> exposes <code>dlpi_addr</code> and each program header, so an agent can compute <code>dlpi_addr + p_vaddr</code> directly. <a href="#s6">[6]</a></p>
 <div class="figure"><div class="label">Coordinate translator · captured app</div><h3>Follow a byte from disk into memory.</h3><label for="coordinate">Choose a location:</label><div class="controls"><select id="coordinate"><option value="call">The call instruction</option><option value="dynamic">The dynamic table</option><option value="slot">scan’s GOT slot</option></select></div><output id="address" class="equation" aria-live="polite"></output><p class="caption">All three locations use bias 0x55e0f9a9a000. The last two illustrate why adding a file offset directly to the first mapping address can fail.</p></div>
 <p>Our last writable <code>PT_LOAD</code> has <code>p_offset=0x2db0</code> and <code>p_vaddr=0x3db0</code>. The dynamic table begins at file offset <code>0x2dc0</code>, hence ELF VA <code>0x3dc0</code>. The same segment contains the GOT slot: file offset <code>0x3058</code>, ELF VA <code>0x4058</code>. Segment boundaries and page alignment explain why the fourth app VMA can show file offset <code>0x2000</code> again.</p>
-<p>Uninitialized storage adds another wrinkle. When <code>p_memsz &gt; p_filesz</code>, the extra memory is zero-filled; it has no corresponding payload bytes on disk. A large <code>.bss</code> can extend into anonymous pages. And after relocations the loader can make part of an initially writable segment read-only—one reason the VMA list need not match the <code>PT_LOAD</code> list one-for-one. <a href="#s1">[1]</a></p>
+<p>Uninitialized storage adds another wrinkle. When the segment’s memory size <code>p_memsz</code> exceeds its file-backed size <code>p_filesz</code>, the extra memory is zero-filled; it has no corresponding payload bytes on disk. The section conventionally called <code>.bss</code> holds this zero-initialized storage; a large one can extend into anonymous pages. And after relocations the loader can make part of an initially writable segment read-only—one reason the VMA list need not match the <code>PT_LOAD</code> list one-for-one. <a href="#s1">[1]</a></p>
 <div class="note"><p>In the captured run, the library’s <code>scan</code> is at <code>0x7fe426265000 + 0x1100 = 0x7fe426266100</code>. The application’s GOT slot lives at <code>0x55e0f9a9a000 + 0x4058 = 0x55e0f9a9e058</code>. The slot belongs to the caller; the instructions it points to belong to the provider.</p></div>
 </section>
 <section id="startup"><span class="sectionnum">04 / BEFORE MAIN</span><h2>Who turns these files into a running process?</h2>
-<p>The build-time linker, usually reached through <code>gcc</code> or <code>g++</code>, has already produced the executable. It is not still running in the application. At execution time a different component takes over: the dynamic linker/loader, here <code>/lib64/ld-linux-x86-64.so.2</code>. That path is recorded in <code>PT_INTERP</code>.</p>
+<p>The build-time linker, usually reached through <code>gcc</code> or <code>g++</code>, has already produced the executable. It is not still running in the application. At execution time a different component takes over: the dynamic linker/loader, here <code>/lib64/ld-linux-x86-64.so.2</code>, supplied by glibc (the GNU C Library). The program-header entry with type <code>PT_INTERP</code> (interpreter) identifies where the file stores that path.</p>
 <p>On a normal Linux ELF <code>execve()</code>, the kernel maps the main executable and its interpreter, prepares the initial stack with arguments, environment, and an auxiliary vector, and transfers control to the interpreter’s entry point. The auxiliary vector supplies information such as the executable’s program headers and entry point. The kernel does not recursively resolve <code>scan</code> itself. <a href="#s7">[7]</a></p>
-<p>The loader bootstraps itself, finds dependencies, maps shared objects, establishes thread-local storage, and performs the relocations required before execution can proceed. Applicable initialization routines run before <code>main</code>; startup work is shared between the loader and C runtime. The executable’s entry point is normally <code>_start</code>, which eventually reaches <code>main</code> through runtime startup. Some function bindings may be postponed until their first use.</p>
+<p>The loader bootstraps itself, finds dependencies, maps shared objects, establishes thread-local storage (variables for which each thread has its own instance), and performs the relocations required before execution can proceed. Applicable initialization routines run before <code>main</code>; startup work is shared between the loader and the C runtime—the library startup code that prepares the environment for C/C++ code. The internal thread-local-storage layout is not needed to follow this call. The executable’s entry point is normally <code>_start</code>, which eventually reaches <code>main</code> through runtime startup. Some function bindings may be postponed until their first use.</p>
 <p>In the lab, a constructor in <code>libagent.so</code> writes <code>agent constructor: before main</code> before the application prints its first message. No separate “agent process” is handling the call. The constructor and wrapper execute in the application’s address space. Preloading is a way to get code loaded at startup; that code must still arrange whatever hooks or control loop it needs.</p>
 <h3>Finding the file comes before finding the symbol.</h3>
 <p><code>-L.</code> tells the build-time linker where to look; it does not by itself teach the runtime loader where to look. Our <code>-Wl,-rpath,'$ORIGIN'</code> stores a runtime search path relative to the executable’s directory. Quoting keeps the shell from expanding the token. For ordinary no-slash dependency names, glibc considers legacy RPATH under its conditions, <code>LD_LIBRARY_PATH</code>, RUNPATH, the loader cache, and default directories. RUNPATH applies to direct dependencies, not automatically to all descendants. <a href="#s8">[8]</a></p>
 <p>A file can be found successfully and still fail symbol lookup. A symbol can also be found in an object other than the one you expected. Diagnose these as two separate questions: <em>which files were loaded?</em> and <em>which definition satisfied this reference?</em></p>
 </section>
 <section id="call"><span class="sectionnum">05 / THE MACHINE CALL</span><h2>One stable call site, two different first steps.</h2>
-<p>Here is the actual x86-64 call instruction in our lazy-binding build:</p>
-<pre><code>11b6: e8 25 ff ff ff        call 10e0 &lt;scan@plt&gt;
+<p><strong>Binding</strong> means choosing a definition for a symbol reference and establishing its target address. <strong>Lazy binding</strong> postpones that work for a function reference until its first call; <strong>eager binding</strong> does it before normal execution. Here is the actual x86-64 call instruction in our lazy-binding build:</p>
+<pre><code>$ objdump -d app
+# Selected call site and the PLT stub it calls.
+11b6: e8 25 ff ff ff        call 10e0 &lt;scan@plt&gt;
 
 10e0 &lt;scan@plt&gt;:
   ff 25 72 2f 00 00         jmp *0x2f72(%rip)  # slot at 4058
   68 0b 00 00 00            push $0xb
   e9 30 ff ff ff            jmp 1020           # common PLT entry</code></pre>
-<p>The <strong>procedure linkage table</strong> is a set of little executable stubs in the caller. The <strong>global offset table</strong> stores addresses in the caller’s data mappings. This PLT stub jumps through a GOT slot using an instruction-pointer-relative address. Both stub and slot slide by the same load bias, so the displacement remains usable after ASLR.</p>
-<p>Initially, lazy-binding setup makes this slot lead to the stub’s fallback instructions at <code>scan@plt + 6</code>. Those instructions identify the relocation and reach the common resolver route. The dynamic linker chooses the definition, writes its address into the slot, and arranges to continue into the chosen function. Later calls use the same call instruction and PLT stub but jump directly to the resolved target. This particular push/index arrangement is x86-64 ABI machinery; other architectures and modern PLT variants encode the route differently.</p>
+<p>The <strong>procedure linkage table</strong> is a set of little executable stubs in the caller. The <strong>global offset table</strong> stores addresses in the caller’s data mappings. This PLT stub jumps through a GOT slot using an instruction-pointer-relative address. In the assembly, <code>%rip</code> is the instruction pointer and <code>jmp *</code> means an indirect jump: read a target pointer from memory, then jump to that target. Both stub and slot slide by the same load bias, so the displacement remains usable after ASLR.</p>
+<p>Initially, lazy-binding setup makes this slot lead to the stub’s fallback instructions at <code>scan@plt + 6</code>. Those instructions identify the relocation and reach the common resolver route. The dynamic linker chooses the definition, writes its address into the slot, and arranges to continue into the chosen function. Later calls use the same call instruction and PLT stub but jump directly to the resolved target. The <strong>application binary interface (ABI)</strong> specifies machine-level agreements between compiled components, including call conventions and relocation formats. This particular push/index arrangement is x86-64 ABI machinery; other architectures and modern PLT variants encode the route differently.</p>
 <div class="figure"><div class="label">Execution model · illustrative state, real call route</div><h3>Step through a binding.</h3><div class="controls"><label for="binding">Binding:</label><select id="binding"><option value="lazy">Lazy, ordinary library</option><option value="preload">Lazy, agent preloaded</option><option value="now">Eager, ordinary library</option></select></div><div class="route"><div class="node" id="n-call">app<br>call scan@plt</div><div class="node" id="n-slot">app’s GOT<br>one target pointer</div><div class="node" id="n-target">provider<br>function instructions</div></div><div class="slot" id="slotstate"></div><div class="stage" aria-live="polite"><div class="label" id="stepcount"></div><h4 id="steptitle"></h4><p id="steptext"></p></div><div class="controls"><button id="previous">← Previous</button><button id="next">Next →</button><button id="reset">Start again</button></div><p class="caption">The model shows one imported reference. Each importing object can have its own slot for the same symbol.</p></div>
 <h3>Resolve early, and the first call becomes ordinary.</h3>
 <p>The lab’s <code>app-now</code> uses <code>-Wl,-z,now</code>. <code>LD_BIND_NOW=1</code> also requests eager function binding. The loader fills the relevant targets before normal execution, so the first call does not need this lazy resolver detour. The cost moves into startup; there is no claim here about how many nanoseconds it costs.</p>
-<p>RELRO means relocation read-only: the loader can protect a designated region after fixing it up. A common “full RELRO” build combines <code>-z relro</code> with <code>-z now</code>, allowing the GOT area that lazy binding would need to mutate to become read-only. In our lazy build, <code>PT_GNU_RELRO</code> ends at ELF VA <code>0x4000</code>; <code>scan</code>’s slot at <code>0x4058</code> remains writable. Inspect the actual layout rather than inferring permissions from the section name. <a href="#s17">[17]</a></p>
+<p>RELRO means relocation read-only: the loader can protect a designated region after fixing it up. A common “full RELRO” build combines <code>-z relro</code> with <code>-z now</code>, allowing the GOT area that lazy binding would need to mutate to become read-only. In our lazy build, the GNU-specific program-header entry <code>PT_GNU_RELRO</code> identifies the range to protect; that range ends at ELF VA <code>0x4000</code>; <code>scan</code>’s slot at <code>0x4058</code> remains writable. Inspect the actual layout rather than inferring permissions from the section name. <a href="#s17">[17]</a></p>
 <p>Position-independent code is the broader idea: keep instructions usable when the object moves, using relative addressing and indirection where necessary. <code>-fPIC</code> is the usual shared-library compilation mode; <code>-fPIE</code> plus <code>-pie</code> builds a position-independent executable. PIC does not mean “no relocations.” Our PIC library and PIE application still need runtime fixups for some stored addresses. Keeping most fixups out of executable text helps code pages remain shareable. <a href="#s9">[9]</a></p>
 <h3>Removing the PLT does not remove dynamic lookup.</h3>
 <p>Our <code>app-noplt</code>, built with GCC’s <code>-fno-plt</code>, has this call instead:</p>
-<pre><code>1097: ff 15 1b 2f 00 00   call *0x2f1b(%rip)  # GOT at 3fb8
+<pre><code>$ objdump -d app-noplt
+# Selected call site: an indirect call through the GOT.
+1097: ff 15 1b 2f 00 00   call *0x2f1b(%rip)  # GOT at 3fb8
 
-# relocation for that slot:
+$ readelf -rW app-noplt
+# Selected relocation for that slot:
 0000000000003fb8  R_X86_64_GLOB_DAT  scan + 0</code></pre>
 <p>The application calls through the GOT without taking a PLT stub first. The address is resolved at load time. Our preload experiment still changes its result from <code>8</code> to <code>108</code>. <code>-fno-plt</code> changes call generation, not the general eligibility of a default-visible external symbol for interposition. GCC can also optimize calls known to bind locally. <a href="#s9">[9]</a></p>
 </section>
@@ -151,7 +205,11 @@ int result = fn(7);</code></pre>
 <p><code>RTLD_NEXT</code> means “next,” not “the pristine libc version.” A second preload layer can be next. Moving the lookup into another shared object can change what “after me” means. The public symbol name is a lookup key; it is not a unique process-wide identity for an implementation. <a href="#s10">[10]</a></p>
 <h3>A returned pointer does not rewrite existing call routes.</h3>
 <p>The lab includes a small x86-64/glibc-only inspection program that finds the main executable’s <code>scan</code> relocation and reads its slot around a lookup and a call. Here is one measured run:</p>
-<pre><code>before:       0x55a308ddc086  ← app’s unresolved PLT route
+<pre><code>$ make slots
+# Build output omitted.
+$ ./slots
+# Selected output; addresses come from this one execution.
+before:       0x55a308ddc086  ← app’s unresolved PLT route
 dlsym result: 0x7ff08f4f3100  ← libwork’s implementation
 after dlsym:  0x55a308ddc086  ← unchanged
 after call:   0x7ff08f4f3100  ← now bound by the call
@@ -163,7 +221,7 @@ result: 8; lookup left slot unchanged: yes</code></pre>
 </section>
 <section id="preload"><span class="sectionnum">07 / INTERPOSITION</span><h2>Get a wrapper chosen before the original.</h2>
 <p>Run the application with:</p>
-<pre><code>LD_PRELOAD="$PWD/libagent.so" ./app</code></pre>
+<pre><code>$ LD_PRELOAD="$PWD/libagent.so" ./app</code></pre>
 <p>The loader brings the agent in at startup and makes its definitions available for interposition. In the usual glibc global startup lookup scope, eligible definitions in the main executable come before preloaded libraries, which precede ordinary dependencies. Multiple preload entries are considered in their specified order. Exact lookup remains reference- and scope-dependent. Secure-execution rules restrict environment-based preloading. <a href="#s8">[8]</a></p>
 <p>Our agent exports <code>scan</code>. It resolves the next implementation once and adds <code>100</code> to its result. The added arithmetic makes the route visible without requiring a real semaphore.</p>
 <pre><code>static int (*next_scan)(int);
@@ -182,7 +240,9 @@ int scan(int x) {
 }</code></pre>
 <p class="caption">Excerpt; the downloadable source includes headers and diagnostics. The once-control avoids a data race during concurrent initialization. It is suitable for this narrow example, not a general allocator-hook bootstrap.</p>
 <p>The compiled lab reports:</p>
-<pre><code>agent constructor: before main
+<pre><code>$ LD_PRELOAD="$PWD/libagent.so" ./app
+# Selected output; local paths are shortened below.
+agent constructor: before main
 scan(7)=108
 scan(7)=108
 local_scan(7)=8
@@ -196,12 +256,14 @@ DEFAULT call=108; handle call=8</code></pre>
 <section id="research"><span class="sectionnum">08 / CHOOSING AN INTERVENTION POINT</span><h2>A symbol is not every execution of a function.</h2>
 <p>Suppose runtime feedback says that <code>scan</code> is creating memory-bandwidth contention. You want to turn a permit check on for a changing subset of functions, with as little inactive cost as possible. Dynamic linking gives you an injection route and some indirection points. It does not guarantee a universal interception point.</p>
 <p>In our application the local route is literal:</p>
-<pre><code>11e0: e8 9b 02 00 00    call 1480 &lt;local_scan&gt;
+<pre><code>$ objdump -d app
+# Selected direct call and its local implementation.
+11e0: e8 9b 02 00 00    call 1480 &lt;local_scan&gt;
 
 1480 &lt;local_scan&gt;:
   8d 47 01             lea 0x1(%rdi), %eax
   c3                   ret</code></pre>
-<p>No dynamic lookup or GOT slot exists on this route. A preload library cannot win a lookup that never happens. Inlining goes further: there may be no function call left to redirect at all. Separate translation units, LTO decisions, visibility, local binding, and linker options affect which routes survive. Treat the final binary as the evidence.</p>
+<p>No dynamic lookup or GOT slot exists on this route. A preload library cannot win a lookup that never happens. Inlining goes further: there may be no function call left to redirect at all. Separate translation units (source files compiled independently), link-time optimization (LTO, which can optimize across them), visibility, local binding, and linker options affect which routes survive. Treat the final binary as the evidence.</p>
 <div class="tablewrap"><table><thead><tr><th>Intervention</th><th>What changes</th><th>Which routes it reaches</th></tr></thead><tbody>
 <tr><td>Preload interposition</td><td>Definition selected by eligible dynamic lookups</td><td>Imports and lookups that choose the wrapper; misses direct local calls and inlined copies.</td></tr>
 <tr><td>GOT-slot update</td><td>A pointer slot in a particular importing object</td><td>Calls reading that slot; misses other objects’ slots, direct calls, and cached pointer copies.</td></tr>
@@ -214,10 +276,10 @@ DEFAULT call=108; handle call=8</code></pre>
 <p>A GOT update avoids moving instructions but still needs a defined concurrency and lifetime strategy, and may need to change read-only page permissions. An aligned hardware pointer store is not automatically a complete, language-level protocol for racing arbitrary generated call sites. If an old target can be unloaded or freed, a successful store does not prove no thread is still using it.</p>
 <h3>The unknowns worth finding before a benchmark.</h3>
 <details class="readmore" open><summary>Can the agent find the intended function?</summary><p><code>.symtab</code>, the full toolchain symbol table, and <code>.dynsym</code>, the dynamic interface, are different. A function visible to <code>nm app</code> may be absent from <code>nm -D app</code>. <code>-rdynamic</code> can export executable globals, but it cannot make a static function interposable or resurrect an inline call. C++ adds mangled names, overloaded signatures, thunks, clones, and exception semantics. Prefer a compiler-generated address/ID manifest with build identity over guessing from printable names. <a href="#s3">[3]</a></p></details>
-<details class="readmore"><summary>Does the address name the implementation you think it does?</summary><p>GNU IFUNC symbols designate a resolver whose returned address selects an implementation, often based on CPU features. A raw symbol-table value can therefore point to a resolver rather than the code ultimately called. Symbol versions add another identity dimension; <code>dlvsym()</code> asks for a particular version. A useful experimental target identity is a tuple: object/build, function ID or symbol/version, and observed entry address. <a href="#s13">[13]</a></p></details>
+<details class="readmore"><summary>Does the address name the implementation you think it does?</summary><p>GNU indirect-function (IFUNC) symbols designate a resolver whose returned address selects an implementation, often based on CPU features. A raw symbol-table value can therefore point to a resolver rather than the code ultimately called. Symbol versions add another identity dimension; <code>dlvsym()</code> asks for a particular version. A useful experimental target identity is a tuple: object/build, function ID or symbol/version, and observed entry address. <a href="#s13">[13]</a></p></details>
 <details class="readmore"><summary>Are lookup scopes hiding a second copy?</summary><p>A local plugin scope, <code>RTLD_DEEPBIND</code>, or a separate <code>dlmopen()</code> namespace can defeat an assumption that every lookup sees one global set of definitions. Hidden/protected visibility and <code>-Bsymbolic</code> can make intra-library references bind locally. For a first research prototype, deliberately constrain the loading model and document those constraints. Expand coverage only when the experiment demands it. <a href="#s11">[11]</a> <a href="#s17">[17]</a></p></details>
 <details class="readmore"><summary>Can you discover mappings safely?</summary><p>Use <code>dl_iterate_phdr()</code> for loaded objects and segment information. <code>dladdr()</code> maps a code address back to object/symbol information when available; it is not a complete debug-symbol or source-line service. <code>dlinfo()</code> exposes documented handle information. Avoid treating an opaque <code>dlopen</code> handle as a public <code>link_map*</code>, or walking loader lists unsynchronized. Discovery also needs a lifetime policy if other threads can unload objects. <a href="#s14">[14]</a> <a href="#s15">[15]</a></p></details>
-<details class="readmore"><summary>What if a signal requests the change?</summary><p>A signal handler may interrupt loader or allocation state halfway through an update. MT-safe does not mean async-signal-safe: do not run <code>dlsym()</code>, <code>dlopen()</code>, or general logging from an arbitrary signal handler. Notify a normal control thread through a suitable async-signal-safe mechanism, or arrange synchronous signal handling with <code>sigwait</code>. Let that thread perform discovery and coordinate the patch. <a href="#s16">[16]</a></p></details>
+<details class="readmore"><summary>What if a signal requests the change?</summary><p>A signal handler may interrupt loader or allocation state halfway through an update. Safe for concurrent calls by multiple threads (MT-safe) does not mean safe when called from an interrupting signal handler (async-signal-safe): do not run <code>dlsym()</code>, <code>dlopen()</code>, or general logging from an arbitrary signal handler. Notify a normal control thread through a suitable async-signal-safe mechanism, or arrange synchronous signal handling with <code>sigwait</code>. Let that thread perform discovery and coordinate the patch. <a href="#s16">[16]</a></p></details>
 <details class="readmore"><summary>What does the permit wrapper promise?</summary><p>The call ABI comes first: preserve arguments, return values, stack alignment, and any exception/unwind contract. Then define permit ownership on early return, exception, thread cancellation, nested guarded calls, and recursion. A C++ RAII guard helps on ordinary exception paths; it does not make arbitrary cancellation or nonlocal exits safe by itself. Make the cancellation contract explicit before treating a wrapper as transparent.</p></details>
 <details class="readmore"><summary>Which overhead are you actually measuring?</summary><p>Separate first-use lookup, steady-state call route, permit operation, and activation/deactivation. Compare a direct-call baseline, normal imported call, preloaded pass-through, explicit pointer dispatch, and a detoured entry with the same workload. Warm the intended binding state before steady-state timings, retain a cold case separately, inspect generated instructions, and prevent the compiler from deleting the work. These lab results establish routes and behavior; they are not timing measurements.</p></details>
 <p>The important design question is now concrete: <em>which instruction or pointer must every relevant execution pass through, and what protocol lets the agent change it?</em> The loader can answer where an object landed and which symbol it selected. Your instrumentation contract must answer the rest.</p>
@@ -263,6 +325,7 @@ LD_BIND_NOW=1 ./slots</code></pre>
 <li id="s14"><a href="https://sourceware.org/glibc/manual/latest/html_node/Dynamic-Linker-Introspection.html">glibc: dynamic linker introspection</a> — load bias, link maps, documented introspection.</li>
 <li id="s15"><a href="https://man7.org/linux/man-pages/man3/dladdr.3.html">Linux man-pages: dladdr(3)</a> — translating addresses back to objects and symbols.</li>
 <li id="s16"><a href="https://man7.org/linux/man-pages/man7/signal-safety.7.html">Linux man-pages: signal-safety(7)</a> — signal-handler constraints.</li>
+<li id="s18"><a href="https://gabi.xinuos.com/elf/02-eheader.html">System V ABI: ELF header</a> — the numeric e_type field and ET_ constants.</li>
 <li id="s17"><a href="https://sourceware.org/binutils/docs/ld/Options.html">GNU ld: options</a> — eager binding, RELRO, symbolic binding, exports.</li>
 </ol><p>Continue into <a href="../bpftime/">the bpftime series</a> for the next layer: getting an agent and a hook runtime into the application, then tracing a detoured call.</p></section>
 <footer><a href="../">← All notes</a> · Linux/glibc is the scope; macOS dyld, Windows PE, and static-only executables require different mechanisms.</footer>
